@@ -199,7 +199,7 @@ async function findLocalDuplicates(newFingerprint) {
 }
 
 /**
- * Clears on-device duplicate history.
+ * Clears on-device duplicate history from IndexedDB.
  */
 async function clearLocalStore() {
   const db = await openDB();

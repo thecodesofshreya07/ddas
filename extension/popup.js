@@ -59,11 +59,20 @@ async function renderSignedIn(user) {
       <span class="toggle-label">Check downloads automatically</span>
       <input type="checkbox" id="toggle" ${enabled ? "checked" : ""} />
     </div>
-    <button class="btn-secondary" id="signout-btn" style="margin-top:14px">Sign out</button>
+    <button class="btn-secondary" id="clear-cache-btn" style="margin-top:8px">Clear Device Cache</button>
+    <button class="btn-secondary" id="signout-btn" style="margin-top:8px">Sign out</button>
     <a href="#" id="settings-link" class="footer-link">API settings</a>
   `;
 
   document.getElementById("toggle").onchange = (e) => setInterceptionEnabled(e.target.checked);
+  document.getElementById("clear-cache-btn").onclick = async () => {
+    const btn = document.getElementById("clear-cache-btn");
+    btn.textContent = "Clearing...";
+    chrome.runtime.sendMessage({ type: "CLEAR_LOCAL_CACHE" }, () => {
+      btn.textContent = "Cache Cleared ✓";
+      setTimeout(() => { btn.textContent = "Clear Device Cache"; }, 2000);
+    });
+  };
   document.getElementById("signout-btn").onclick = async () => {
     await clearAuth();
     await render();
