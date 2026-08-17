@@ -17,9 +17,22 @@ function renderLogin(error) {
     <label for="password">Password</label>
     <input id="password" type="password" placeholder="••••••••" />
     <button class="btn-primary" id="login-btn">Sign in</button>
+    <button class="btn-primary" id="open-sim-btn" style="margin-top:8px; background:#6366F1; color:#fff;">🧪 Open Test Simulator</button>
+    <button class="btn-secondary" id="clear-cache-btn" style="margin-top:8px">Clear Device Cache</button>
     <button class="btn-secondary" id="settings-btn">API settings</button>
   `;
   document.getElementById("login-btn").onclick = handleLogin;
+  document.getElementById("open-sim-btn").onclick = () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL("test-simulator.html") });
+  };
+  document.getElementById("clear-cache-btn").onclick = async () => {
+    const btn = document.getElementById("clear-cache-btn");
+    btn.textContent = "Clearing...";
+    chrome.runtime.sendMessage({ type: "CLEAR_LOCAL_CACHE" }, () => {
+      btn.textContent = "Cache Cleared ✓";
+      setTimeout(() => { btn.textContent = "Clear Device Cache"; }, 2000);
+    });
+  };
   document.getElementById("settings-btn").onclick = () => chrome.runtime.openOptionsPage();
 }
 
@@ -59,11 +72,15 @@ async function renderSignedIn(user) {
       <span class="toggle-label">Check downloads automatically</span>
       <input type="checkbox" id="toggle" ${enabled ? "checked" : ""} />
     </div>
+    <button class="btn-primary" id="open-sim-btn" style="margin-top:12px; background:#6366F1; color:#fff;">🧪 Open Test Simulator</button>
     <button class="btn-secondary" id="clear-cache-btn" style="margin-top:8px">Clear Device Cache</button>
     <button class="btn-secondary" id="signout-btn" style="margin-top:8px">Sign out</button>
     <a href="#" id="settings-link" class="footer-link">API settings</a>
   `;
 
+  document.getElementById("open-sim-btn").onclick = () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL("test-simulator.html") });
+  };
   document.getElementById("toggle").onchange = (e) => setInterceptionEnabled(e.target.checked);
   document.getElementById("clear-cache-btn").onclick = async () => {
     const btn = document.getElementById("clear-cache-btn");
