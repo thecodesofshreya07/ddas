@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    body {
+      width: 300px;
+      margin: 0;
+      font-family: 'Inter', system-ui, sans-serif;
+      background: #0D1526;
+      color: #F5F7FA;
+    }
+    .header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 14px 16px; border-bottom: 1px solid #1B2A45;
+    }
+    .header img { width: 24px; height: 24px; }
+    .header .title { font-weight: 600; font-size: 14px; }
+    .header .subtitle { font-size: 10px; color: #64748B; font-family: 'JetBrains Mono', monospace; }
+    .content { padding: 16px; }
+    label { display: block; font-size: 11px; color: #94A3B8; margin-bottom: 4px; }
+    input {
+      width: 100%; box-sizing: border-box; background: #131E33; border: 1px solid #1B2A45;
+      border-radius: 3px; padding: 7px 10px; color: #F5F7FA; font-size: 13px; margin-bottom: 10px;
+    }
+    input:focus { outline: none; border-color: #14B8A6; }
+    button {
+      width: 100%; padding: 9px; border-radius: 3px; border: none; font-size: 13px;
+      font-weight: 500; cursor: pointer;
+    }
+    .btn-primary { background: #14B8A6; color: #0A0F1C; }
+    .btn-secondary { background: transparent; color: #94A3B8; border: 1px solid #1B2A45; margin-top: 8px; }
+    .error { color: #FB7185; font-size: 12px; margin-bottom: 10px; }
+    .user-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+    .user-name { font-size: 13px; font-weight: 500; }
+    .user-meta { font-size: 10px; color: #64748B; font-family: 'JetBrains Mono', monospace; margin-top: 2px; }
+    .toggle-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-top: 1px solid #1B2A45; }
+    .toggle-label { font-size: 12px; }
+    .footer-link { font-size: 11px; color: #64748B; text-align: center; margin-top: 10px; display: block; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="icons/icon-32.png" alt="" />
+    <div>
+      <div class="title">DDAS Extension</div>
+      <div class="subtitle">Duplicate download alerts</div>
+    </div>
+  </div>
+  <div class="content" id="content">
+    <!-- populated by popup.js -->
+  </div>
+  <script src="config.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
