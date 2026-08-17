@@ -1,41 +1,4 @@
-// Runs on every page. Only acts on links that look like dataset downloads —
-// everything else is left completely alone.
-
-const TRACKED_EXTENSIONS = [".csv", ".json", ".pdf", ".xls", ".xlsx", ".tsv", ".parquet", ".zip"];
-
-function looksLikeDatasetLink(link) {
-  if (!link) return false;
-  try {
-    const downloadAttr = (link.getAttribute("download") || "").toLowerCase();
-    if (TRACKED_EXTENSIONS.some((ext) => downloadAttr.endsWith(ext))) {
-      return true;
-    }
-    const href = link.href || "";
-    if (href.startsWith("javascript:") || href.startsWith("#")) {
-      return false;
-    }
-    const url = new URL(href, window.location.href);
-    const path = url.pathname.toLowerCase();
-    return TRACKED_EXTENSIONS.some((ext) => path.endsWith(ext));
-  } catch {
-    return false;
-  }
-}
-
-document.addEventListener(
-  "click",
-  (e) => {
-    const link = e.target.closest("a");
-    if (!link || !looksLikeDatasetLink(link)) return;
-
-    e.preventDefault();
-    e.stopPropagation();
-    const downloadAttr = link.getAttribute("download");
-    const filename = downloadAttr || link.href.split("/").pop().split("?")[0] || "dataset.csv";
-    runCheck(link.href, filename);
-  },
-  true // capture phase, so this runs before the page's own click handlers
-);
+// DDAS Content Script — renders isolated Shadow DOM alert modals and provides tab-context fingerprinting.
 
 let activeOverlay = null;
 
@@ -90,87 +53,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return false;
 });
 
-async function runCheck(url, filename) {
-  const overlay = showOverlay();
-  activeOverlay = overlay;
-  overlay.setChecking(filename);
-
-  try {
-    const checkPromise = (async () => {
-      let precomputedFp = null;
-      try {
-        precomputedFp = await fetchAndFingerprint(url, filename);
-      } catch (e) {
-        console.warn("[DDAS] in-page fingerprint failed:", e.message);
-      }
-
-      const result = await chrome.runtime.sendMessage({
-        type: "CHECK_DOWNLOAD",
-        url,
-        filename,
-        fingerprint: precomputedFp,
-      });
-
-      return { result, fpToSave: result?.fingerprint || precomputedFp };
-    })();
-
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("Check timeout")), 3500)
-    );
-
-    const { result, fpToSave } = await Promise.race([checkPromise, timeoutPromise]);
-
-    if (!result || result.status === "disabled" || result.status === "error" || (result.status === "error" && result.failOpen)) {
-      overlay.close();
-      activeOverlay = null;
-      chrome.runtime.sendMessage({ type: "PROCEED_DOWNLOAD", url, filename, fingerprint: fpToSave });
-      return;
-    }
-
-    if (result.status === "auth_required") {
-      overlay.showAuthRequired(() => {
-        overlay.close();
-        activeOverlay = null;
-        chrome.runtime.sendMessage({ type: "PROCEED_DOWNLOAD", url, filename, fingerprint: fpToSave });
-      });
-      return;
-    }
-
-    if (result.status === "none") {
-      overlay.showClear(() => {
-        chrome.runtime.sendMessage({ type: "PROCEED_DOWNLOAD", url, filename, fingerprint: fpToSave });
-      });
-      activeOverlay = null;
-      return;
-    }
-
-    if (result.status === "exact_duplicate" || result.status === "similar") {
-      overlay.showAlert(result, {
-        onUseExisting: () => {
-          overlay.close();
-          activeOverlay = null;
-        },
-        onContinue: () => {
-          chrome.runtime.sendMessage({ type: "PROCEED_DOWNLOAD", url, filename, fingerprint: fpToSave });
-          overlay.close();
-          activeOverlay = null;
-        },
-      });
-      return;
-    }
-
-    // Unrecognized status — fail open rather than silently blocking.
-    overlay.close();
-    activeOverlay = null;
-    chrome.runtime.sendMessage({ type: "PROCEED_DOWNLOAD", url, filename, fingerprint: fpToSave });
-  } catch (err) {
-    console.warn("[DDAS] Check failed or timed out, proceeding with download:", err.message);
-    overlay.close();
-    activeOverlay = null;
-    chrome.runtime.sendMessage({ type: "PROCEED_DOWNLOAD", url, filename });
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Overlay UI — rendered in a shadow root so the host page's CSS can't break
 // it (and vice versa).
@@ -178,8 +60,11 @@ async function runCheck(url, filename) {
 function showOverlay() {
   const existingHost = document.getElementById("ddas-overlay-host");
   if (existingHost) {
-    try { existingHost.remove(); } catch {}
+    try {
+      existingHost.remove();
+    } catch {}
   }
+
   const host = document.createElement("div");
   host.id = "ddas-overlay-host";
   document.body.appendChild(host);
@@ -197,36 +82,14 @@ function showOverlay() {
   const body = shadow.querySelector(".body");
 
   function close() {
-    host.remove();
-  }
-
-  function setChecking(filename) {
-    body.innerHTML = `
-      <div class="checking">
-        <div class="spinner"></div>
-        <div class="checking-text">Checking <strong>${escapeHtml(filename)}</strong> against the DDAS registry…</div>
-      </div>
-    `;
-  }
-
-  function showAuthRequired(onDismiss) {
-    body.innerHTML = `
-      <div class="heading danger">Sign in required</div>
-      <p class="desc">Sign in to the DDAS extension to enable duplicate-download checking.</p>
-      <div class="actions">
-        <button class="btn-secondary" id="ddas-dismiss">Download without checking</button>
-      </div>
-    `;
-    shadow.getElementById("ddas-dismiss").onclick = onDismiss;
-  }
-
-  function showClear(onContinue) {
-    body.innerHTML = `
-      <div class="heading success">No duplicate found</div>
-      <p class="desc">Registered as new. Starting download…</p>
-    `;
-    onContinue();
-    setTimeout(close, 900);
+    try {
+      if (host && host.parentNode) {
+        host.parentNode.removeChild(host);
+      }
+    } catch {}
+    if (activeOverlay && activeOverlay.host === host) {
+      activeOverlay = null;
+    }
   }
 
   function showAlert(result, { onUseExisting, onContinue }) {
@@ -273,15 +136,17 @@ function showOverlay() {
       </div>
     `;
 
-    shadow.getElementById("ddas-use-existing").onclick = () => {
-      onUseExisting();
-    };
-    shadow.getElementById("ddas-continue").onclick = () => {
-      onContinue();
-    };
+    const btnUse = shadow.getElementById("ddas-use-existing");
+    if (btnUse) {
+      btnUse.onclick = () => onUseExisting();
+    }
+    const btnCont = shadow.getElementById("ddas-continue");
+    if (btnCont) {
+      btnCont.onclick = () => onContinue();
+    }
   }
 
-  return { close, setChecking, showAuthRequired, showClear, showAlert };
+  return { host, close, showAlert };
 }
 
 function renderBreakdown(score, breakdown, relationshipType, isLocal) {
@@ -331,13 +196,6 @@ const OVERLAY_CSS = `
     background: #fff; border-radius: 4px; width: 360px; max-width: 90vw;
     padding: 20px; box-shadow: 0 12px 40px rgba(0,0,0,0.25);
   }
-  .checking { display: flex; align-items: center; gap: 12px; }
-  .spinner {
-    width: 18px; height: 18px; border: 2px solid #DDE3EC; border-top-color: #14B8A6;
-    border-radius: 50%; animation: ddas-spin 0.8s linear infinite; flex-shrink: 0;
-  }
-  @keyframes ddas-spin { to { transform: rotate(360deg); } }
-  .checking-text { font-size: 13px; color: #1B2A45; line-height: 1.4; }
   .heading { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
   .heading.danger { color: #BE123C; }
   .heading.warning { color: #D97706; }
