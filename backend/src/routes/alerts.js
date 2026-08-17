@@ -136,9 +136,10 @@ router.get("/:relationshipId", requireAuth, async (req, res) => {
     relationship: rel,
     severity: computeSeverity(rel.relationship_type, rel.similarity_score),
     review,
-    previousOccurrences: parseInt(previousOccurrences.rows[0].count, 10),
+    previousOccurrences: parseInt(previousOccurrences.rows[0]?.count || 0, 10),
     auditTrail: auditTrail.rows,
   });
+
 });
 
 /**

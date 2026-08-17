@@ -110,11 +110,28 @@ export default function DatasetDetail() {
         <ClassificationBadge level={dataset.classification} />
       </div>
 
-      <div className="flex items-center gap-3 mt-3 text-xs text-ink-600 tag-mono">
-        <span>{dataset.domain}</span>
+      <div className="flex flex-wrap items-center gap-2 mt-3 text-xs text-ink-600">
+        <span className="font-medium bg-ink-100 text-ink-800 px-2 py-0.5 rounded-sm">{dataset.domain}</span>
         <span>·</span>
-        <span>{dataset.owner_department}</span>
+        <span className="font-medium">{dataset.owner_department}</span>
+        {(dataset.period_start || dataset.period_end || versions[0]?.period_start || versions[0]?.period_end) && (
+          <>
+            <span>·</span>
+            <span className="inline-flex items-center gap-1 bg-surface-100 border border-ink-200 px-2 py-0.5 rounded-sm tag-mono text-[11px]">
+              📅 {dataset.period_start || versions[0]?.period_start || "—"} to {dataset.period_end || versions[0]?.period_end || "—"}
+            </span>
+          </>
+        )}
+        {(dataset.spatial_region_name || versions[0]?.spatial_region_name) && (
+          <>
+            <span>·</span>
+            <span className="inline-flex items-center gap-1 bg-surface-100 border border-ink-200 px-2 py-0.5 rounded-sm tag-mono text-[11px]">
+              📍 {dataset.spatial_region_name || versions[0]?.spatial_region_name}
+            </span>
+          </>
+        )}
       </div>
+
 
       {notice && (
         <div

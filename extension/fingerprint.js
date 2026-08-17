@@ -59,6 +59,31 @@ function parseCsvText(text, delimiter = ",") {
   return { columns, rowCount: rows.length, columnStats, rows };
 }
 
+function inferDateRangeFromCsv(columns, rows) {
+  if (!columns || !rows || rows.length === 0) return { periodStart: null, periodEnd: null };
+  const dateColIdx = columns.findIndex((c) => /date|time|timestamp|year|month|period|datetime/i.test(c));
+  if (dateColIdx === -1) return { periodStart: null, periodEnd: null };
+
+  const validDates = [];
+  for (const r of rows) {
+    const raw = r[dateColIdx];
+    if (!raw) continue;
+    const str = String(raw).trim();
+    const timestamp = Date.parse(str);
+    if (!isNaN(timestamp)) {
+      validDates.push(new Date(timestamp));
+    } else if (/^\d{4}$/.test(str)) {
+      validDates.push(new Date(parseInt(str, 10), 0, 1));
+    }
+  }
+
+  if (validDates.length === 0) return { periodStart: null, periodEnd: null };
+  validDates.sort((a, b) => a.getTime() - b.getTime());
+  const minDate = validDates[0].toISOString().split("T")[0];
+  const maxDate = validDates[validDates.length - 1].toISOString().split("T")[0];
+  return { periodStart: minDate, periodEnd: maxDate };
+}
+
 /**
  * Builds tabular content signature from rows.
  */
@@ -127,6 +152,92 @@ function detectIsWhatsApp(url = "", filename = "") {
 }
 
 /**
+ * Computes full fingerprint from an ArrayBuffer (used identically for web downloads,
+ * local picked files, and directory re-scanned files).
+ */
+async function fingerprintBuffer(buffer, filename = "", mimeType = "", sourceUrl = "", extraMeta = {}) {
+  const sizeBytes = buffer.byteLength;
+  const sha256 = await sha256Hex(buffer);
+
+  const nameToCheck = (filename || sourceUrl).toLowerCase();
+  const contentType = (mimeType || "").toLowerCase();
+  const isTabular =
+    nameToCheck.endsWith(".csv") ||
+    nameToCheck.endsWith(".tsv") ||
+    contentType.includes("csv") ||
+    contentType.includes("tab-separated");
+
+  const isWhatsApp = detectIsWhatsApp(sourceUrl, filename);
+  const inferredFileName = filename || sourceUrl.split("/").pop().split("?")[0] || (isWhatsApp ? "whatsapp_file" : "download");
+
+  let schemaFingerprint = null;
+  let contentSignature = null;
+  let inferredPeriod = { periodStart: null, periodEnd: null };
+
+  if (isTabular && sizeBytes <= MAX_CSV_PARSE_BYTES) {
+    try {
+      const text = new TextDecoder("utf-8").decode(buffer);
+      const parsed = parseCsvText(text, nameToCheck.endsWith(".tsv") ? "\t" : ",");
+      schemaFingerprint = {
+        columns: parsed.columns,
+        rowCount: parsed.rowCount,
+        columnStats: parsed.columnStats,
+      };
+      contentSignature = await buildRowContentSignature(parsed.rows);
+      inferredPeriod = inferDateRangeFromCsv(parsed.columns, parsed.rows);
+    } catch {
+      schemaFingerprint = null;
+      contentSignature = await buildChunkSignature(buffer);
+    }
+  } else {
+    // Non-tabular file (PDF, image, audio, WhatsApp media)
+    contentSignature = await buildChunkSignature(buffer);
+  }
+
+  return {
+    fileName: inferredFileName,
+    filename: inferredFileName,
+    fileSize: sizeBytes,
+    sizeBytes,
+    mimeType: contentType || (isTabular ? "text/csv" : "application/octet-stream"),
+    downloadUrl: sourceUrl || "local-file",
+    byteHash: sha256,
+    sha256,
+    structuralFingerprint: schemaFingerprint,
+    schemaFingerprint,
+    contentSignature,
+    periodStart: extraMeta.periodStart || inferredPeriod.periodStart,
+    periodEnd: extraMeta.periodEnd || inferredPeriod.periodEnd,
+    spatialRegionName: extraMeta.spatialRegionName || null,
+    isWhatsApp,
+    source: extraMeta.source || (extraMeta.isManualIndex ? "manual_local_index" : isWhatsApp ? "whatsapp" : "web"),
+    timestamp: extraMeta.lastModified || Date.now(),
+    isManualIndex: Boolean(extraMeta.isManualIndex),
+    isTrackedFolder: Boolean(extraMeta.isTrackedFolder),
+    ...extraMeta,
+  };
+}
+
+
+/**
+ * Fingerprints a local file object (e.g. from <input type="file"> or File System Access API).
+ */
+async function fingerprintLocalFile(file, extraMeta = {}) {
+  const buffer = await file.arrayBuffer();
+  return await fingerprintBuffer(
+    buffer,
+    file.name,
+    file.type || (file.name.endsWith(".csv") ? "text/csv" : "application/octet-stream"),
+    "local-file",
+    {
+      isManualIndex: true,
+      lastModified: file.lastModified || Date.now(),
+      ...extraMeta,
+    }
+  );
+}
+
+/**
  * Fetches URL and produces byteHash, structuralFingerprint, and contentSignature in one pass.
  */
 async function fetchAndFingerprint(url, filename = "") {
@@ -150,58 +261,9 @@ async function fetchAndFingerprint(url, filename = "") {
     throw new Error(`Fetch failed: HTTP ${response?.status || "network error"}`);
   }
   const buffer = await response.arrayBuffer();
-  const sizeBytes = buffer.byteLength;
-  const sha256 = await sha256Hex(buffer);
-
   const contentType = response.headers?.get("content-type") || "";
-  const nameToCheck = (filename || url).toLowerCase();
-  const isTabular =
-    nameToCheck.endsWith(".csv") ||
-    nameToCheck.endsWith(".tsv") ||
-    contentType.includes("csv") ||
-    contentType.includes("tab-separated");
 
-  const isWhatsApp = detectIsWhatsApp(url, filename);
-  const inferredFileName = filename || url.split("/").pop().split("?")[0] || (isWhatsApp ? "whatsapp_file" : "download");
-
-  let schemaFingerprint = null;
-  let contentSignature = null;
-
-  if (isTabular && sizeBytes <= MAX_CSV_PARSE_BYTES) {
-    try {
-      const text = new TextDecoder("utf-8").decode(buffer);
-      const parsed = parseCsvText(text, nameToCheck.endsWith(".tsv") ? "\t" : ",");
-      schemaFingerprint = {
-        columns: parsed.columns,
-        rowCount: parsed.rowCount,
-        columnStats: parsed.columnStats,
-      };
-      contentSignature = await buildRowContentSignature(parsed.rows);
-    } catch {
-      schemaFingerprint = null;
-      contentSignature = await buildChunkSignature(buffer);
-    }
-  } else {
-    // Non-tabular file (PDF, image, audio, WhatsApp media)
-    contentSignature = await buildChunkSignature(buffer);
-  }
-
-  return {
-    fileName: inferredFileName,
-    filename: inferredFileName,
-    fileSize: sizeBytes,
-    sizeBytes,
-    mimeType: contentType || (isTabular ? "text/csv" : "application/octet-stream"),
-    downloadUrl: url,
-    byteHash: sha256,
-    sha256,
-    structuralFingerprint: schemaFingerprint,
-    schemaFingerprint,
-    contentSignature,
-    isWhatsApp,
-    source: isWhatsApp ? "whatsapp" : "web",
-    timestamp: Date.now(),
-  };
+  return await fingerprintBuffer(buffer, filename, contentType, url);
 }
 
 /**
@@ -383,5 +445,23 @@ function scoreCandidate(newFingerprint, candidate) {
       metadata: metadataScore,
     },
     sampled: contentResult.sampled,
+  };
+}
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = {
+    sha256Hex,
+    hashRow,
+    parseCsvText,
+    buildRowContentSignature,
+    buildChunkSignature,
+    fingerprintBuffer,
+    fingerprintLocalFile,
+    fetchAndFingerprint,
+    levenshtein,
+    filenameSimilarity,
+    contentSimilarity,
+    compareSchema,
+    scoreCandidate,
   };
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/client";
 import DataTable from "../components/ui/DataTable";
@@ -20,12 +20,22 @@ const columns = [
     render: (r) => <ClassificationBadge level={r.classification} />,
   },
   { key: "spatial_region_name", label: "Region", render: (r) => r.spatial_region_name || "—" },
+  {
+    key: "period",
+    label: "Period",
+    render: (r) =>
+      r.period_start || r.period_end
+        ? `${r.period_start || "—"} to ${r.period_end || "—"}`
+        : "—",
+  },
 ];
 
 export default function Search() {
   const navigate = useNavigate();
   const [q, setQ] = useState("");
   const [domain, setDomain] = useState("");
+  const [periodFrom, setPeriodFrom] = useState("");
+  const [periodTo, setPeriodTo] = useState("");
   const [showGeo, setShowGeo] = useState(false);
   const [bbox, setBbox] = useState({ minLat: "", maxLat: "", minLng: "", maxLng: "" });
   const [results, setResults] = useState(null);
@@ -38,12 +48,17 @@ export default function Search() {
     setLoading(true);
     setError(null);
     try {
-      const params = { q: q || undefined, domain: domain || undefined };
+      const params = {
+        q: q || undefined,
+        domain: domain || undefined,
+        periodFrom: periodFrom || undefined,
+        periodTo: periodTo || undefined,
+      };
       if (showGeo && bbox.minLat && bbox.maxLat && bbox.minLng && bbox.maxLng) {
         Object.assign(params, bbox);
       }
       const { data } = await api.get("/datasets/search", { params });
-      setResults(data.results);
+      setResults(data.results || []);
       setSearched(true);
     } catch (err) {
       setError(err.response?.data?.error || "We couldn't complete the search. The service may be temporarily unavailable.");
@@ -51,6 +66,13 @@ export default function Search() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    runSearch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+
 
   return (
     <div>

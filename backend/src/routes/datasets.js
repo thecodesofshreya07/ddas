@@ -335,15 +335,9 @@ router.get("/audit/recent", requireAuth, async (req, res) => {
 /**
  * POST /api/datasets/check
  *
- * The browser-extension entry point. Unlike /api/upload, this performs NO
- * writes — no file storage, no registry insert. It exists purely to answer
- * "is this file, which the user is about to download from some external
- * portal, already in the registry?" using only a fingerprint the extension
- * computed client-side (the file's bytes never touch this server).
- *
- * Body: { sha256, sizeBytes, filename, title?, domain?, schemaFingerprint?,
- *         periodStart?, periodEnd?, spatialMinLat/MaxLat/MinLng/MaxLng?,
- *         sourceUrl? }
+ * The browser-extension entry point. Checks if an incoming download is already
+ * in the central registry (exact or near-duplicate), and evaluates ABAC policy
+ * to determine whether the user is authorized to see the full location.
  */
 router.post("/check", requireAuth, async (req, res) => {
   const {
@@ -360,6 +354,7 @@ router.post("/check", requireAuth, async (req, res) => {
     spatialMaxLat,
     spatialMinLng,
     spatialMaxLng,
+    spatialRegionName,
     sourceUrl,
   } = req.body;
 
@@ -367,32 +362,67 @@ router.post("/check", requireAuth, async (req, res) => {
     return res.status(400).json({ error: "sha256 and sizeBytes are required" });
   }
 
+  const { evaluatePolicy } = require("../middleware/policy");
+
   const exactMatch = await findExactDuplicate(sha256);
   if (exactMatch) {
     const originalStoredName = exactMatch.original_filename || exactMatch.title || "Stored dataset";
     const metaSim = filenameSimilarity(filename || title || "", originalStoredName);
+
+    // Evaluate ABAC for requesting user
+    const effect = await evaluatePolicy({
+      role: req.user.role,
+      department: req.user.department,
+      classification: exactMatch.classification,
+      action: "view",
+    });
+    const hasAccess = effect === "allow";
 
     await recordEvent({
       event_type: "EXTENSION_DUPLICATE_DETECTED",
       actor_id: req.user.id,
       resource_type: "dataset_version",
       resource_id: exactMatch.id,
-      details: { filename, sourceUrl, relationshipType: "exact_duplicate" },
+      details: { filename, sourceUrl, relationshipType: "exact_duplicate", hasAccess },
     });
+
+    const existingPayload = hasAccess
+      ? {
+          datasetId: exactMatch.dataset_id,
+          datasetVersionId: exactMatch.id,
+          title: exactMatch.title || originalStoredName,
+          fileName: originalStoredName,
+          classification: exactMatch.classification,
+          ownerDepartment: exactMatch.owner_department,
+          uploadedAt: exactMatch.uploaded_at,
+          periodStart: exactMatch.period_start || null,
+          periodEnd: exactMatch.period_end || null,
+          spatialRegionName: exactMatch.spatial_region_name || null,
+          locationUrl: `http://localhost:5173/datasets/${exactMatch.dataset_id}`,
+          hasAccess: true,
+        }
+      : {
+          datasetId: null,
+          datasetVersionId: null,
+          title: "Restricted Dataset (Access Controlled)",
+          fileName: originalStoredName,
+          classification: exactMatch.classification || "restricted",
+          ownerDepartment: exactMatch.owner_department ? `${exactMatch.owner_department} Department` : "Restricted Custodian",
+          uploadedAt: exactMatch.uploaded_at,
+          periodStart: exactMatch.period_start || null,
+          periodEnd: exactMatch.period_end || null,
+          spatialRegionName: exactMatch.spatial_region_name || null,
+          locationUrl: null,
+          hasAccess: false,
+          restrictedNote: "Classification: Restricted — Access restricted to custodian department. Contact data administrator to request access.",
+        };
+
     return res.json({
       status: "exact_duplicate",
       relationshipType: "exact_duplicate",
       similarityScore: 100.0,
       breakdown: { content: 100.0, schema: 100.0, metadata: metaSim },
-      existing: {
-        datasetId: exactMatch.dataset_id,
-        datasetVersionId: exactMatch.id,
-        title: originalStoredName,
-        fileName: originalStoredName,
-        classification: exactMatch.classification,
-        ownerDepartment: exactMatch.owner_department,
-        uploadedAt: exactMatch.uploaded_at,
-      },
+      existing: existingPayload,
     });
   }
 
@@ -409,39 +439,75 @@ router.post("/check", requireAuth, async (req, res) => {
     spatial_max_lat: spatialMaxLat ?? null,
     spatial_min_lng: spatialMinLng ?? null,
     spatial_max_lng: spatialMaxLng ?? null,
+    spatial_region_name: spatialRegionName || null,
   };
 
   const match = await findBestMatch(candidateShape);
 
   if (match && match.totalScore >= 60.0) {
-    const originalStoredName = match.candidate.original_filename || match.candidate.title || "Stored dataset";
+    const candidate = match.candidate;
+    const originalStoredName = candidate.original_filename || candidate.title || "Stored dataset";
+
+    // Evaluate ABAC for requesting user
+    const effect = await evaluatePolicy({
+      role: req.user.role,
+      department: req.user.department,
+      classification: candidate.classification,
+      action: "view",
+    });
+    const hasAccess = effect === "allow";
 
     await recordEvent({
       event_type: "EXTENSION_DUPLICATE_DETECTED",
       actor_id: req.user.id,
       resource_type: "dataset",
-      resource_id: match.candidate.dataset_id,
+      resource_id: candidate.dataset_id,
       details: {
         filename,
         sourceUrl,
         relationshipType: match.relationshipType,
         score: match.totalScore,
+        hasAccess,
       },
     });
+
+    const existingPayload = hasAccess
+      ? {
+          datasetId: candidate.dataset_id,
+          datasetVersionId: candidate.id,
+          title: candidate.title || originalStoredName,
+          fileName: originalStoredName,
+          classification: candidate.classification,
+          ownerDepartment: candidate.owner_department,
+          uploadedAt: candidate.uploaded_at,
+          periodStart: candidate.period_start || null,
+          periodEnd: candidate.period_end || null,
+          spatialRegionName: candidate.spatial_region_name || null,
+          locationUrl: `http://localhost:5173/datasets/${candidate.dataset_id}`,
+          hasAccess: true,
+        }
+      : {
+          datasetId: null,
+          datasetVersionId: null,
+          title: "Restricted Dataset (Access Controlled)",
+          fileName: originalStoredName,
+          classification: candidate.classification || "restricted",
+          ownerDepartment: candidate.owner_department ? `${candidate.owner_department} Department` : "Restricted Custodian",
+          uploadedAt: candidate.uploaded_at,
+          periodStart: candidate.period_start || null,
+          periodEnd: candidate.period_end || null,
+          spatialRegionName: candidate.spatial_region_name || null,
+          locationUrl: null,
+          hasAccess: false,
+          restrictedNote: "Classification: Restricted — Access restricted to custodian department. Contact data administrator to request access.",
+        };
+
     return res.json({
       status: match.totalScore >= 80.0 ? "similar" : "related",
       relationshipType: match.relationshipType,
       similarityScore: match.totalScore,
       breakdown: match.breakdown,
-      existing: {
-        datasetId: match.candidate.dataset_id,
-        datasetVersionId: match.candidate.id,
-        title: originalStoredName,
-        fileName: originalStoredName,
-        classification: match.candidate.classification,
-        ownerDepartment: match.candidate.owner_department,
-        uploadedAt: match.candidate.uploaded_at,
-      },
+      existing: existingPayload,
     });
   }
 
@@ -453,6 +519,191 @@ router.post("/check", requireAuth, async (req, res) => {
 
   res.json({ status: "none" });
 });
+
+/**
+ * POST /api/datasets/register-download
+ *
+ * PS Gap 1: Auto-registers completed downloads into the central registry.
+ * If the identical file already exists, links this download event to the existing
+ * canonical record. Otherwise, creates a new canonical dataset & version entry
+ * so that any other user downloading the file later will get a duplicate alert.
+ */
+router.post("/register-download", requireAuth, async (req, res) => {
+  const {
+    sha256,
+    sizeBytes,
+    filename,
+    title,
+    domain,
+    schemaFingerprint,
+    contentSignature,
+    sourceUrl,
+    classification,
+    periodStart,
+    periodEnd,
+    spatialRegionName,
+    spatialMinLat,
+    spatialMaxLat,
+    spatialMinLng,
+    spatialMaxLng,
+  } = req.body;
+
+  if (!sha256 || !sizeBytes) {
+    return res.status(400).json({ error: "sha256 and sizeBytes are required" });
+  }
+
+  const exactMatch = await findExactDuplicate(sha256);
+  if (exactMatch) {
+    // Canonical record already exists — link this download event
+    await pool.query(
+      `INSERT INTO downloads (dataset_version_id, user_id, was_alerted, action_taken, bytes_saved)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [exactMatch.id, req.user.id, false, "registered_external_download", 0]
+    );
+
+    await recordEvent({
+      event_type: "DOWNLOAD_REGISTERED_LINKED",
+      actor_id: req.user.id,
+      resource_type: "dataset_version",
+      resource_id: exactMatch.id,
+      details: { filename, sourceUrl, sha256 },
+    });
+
+    return res.json({
+      status: "linked",
+      datasetId: exactMatch.dataset_id,
+      datasetVersionId: exactMatch.id,
+      message: "Download linked to existing canonical registry record.",
+    });
+  }
+
+  // Create new canonical dataset & version entry in registry
+  const client = await pool.connect();
+  try {
+    const { v4: uuidv4 } = require("uuid");
+    const { indexDataset } = require("../services/search");
+
+    const datasetTitle = title || filename || "External Download";
+    const datasetDomain = domain || "General";
+    const datasetClassification = classification || "internal";
+
+    const { rows: dsRows } = await pool.query(
+      `INSERT INTO datasets (title, description, domain, owner_department, classification)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [
+        datasetTitle,
+        `Auto-registered from external download (${sourceUrl || filename})`,
+        datasetDomain,
+        req.user.department || "General",
+        datasetClassification,
+      ]
+    );
+    const datasetId = dsRows[0].id;
+    const versionId = uuidv4();
+    const storageKey = `external_downloads/${sha256}`;
+
+    const mergedFingerprint = schemaFingerprint
+      ? { ...schemaFingerprint, contentSignature: contentSignature || schemaFingerprint.contentSignature }
+      : (contentSignature ? { contentSignature } : null);
+
+    const { rows: dvRows } = await pool.query(
+      `INSERT INTO dataset_versions
+        (id, dataset_id, version_num, original_filename, format, size_bytes, sha256,
+         storage_key, period_start, period_end, spatial_min_lat, spatial_max_lat,
+         spatial_min_lng, spatial_max_lng, spatial_region_name, uploaded_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id`,
+      [
+        versionId,
+        datasetId,
+        1,
+        filename || "downloaded_file.csv",
+        filename?.endsWith(".json") ? "json" : filename?.endsWith(".pdf") ? "pdf" : "csv",
+        sizeBytes,
+        sha256,
+        storageKey,
+        periodStart || null,
+        periodEnd || null,
+        spatialMinLat ?? null,
+        spatialMaxLat ?? null,
+        spatialMinLng ?? null,
+        spatialMaxLng ?? null,
+        spatialRegionName || null,
+        req.user.id,
+      ]
+    );
+
+    // Save schema fingerprint
+    if (mergedFingerprint) {
+      await pool.query(
+        "UPDATE dataset_versions SET schema_fingerprint = $1 WHERE id = $2",
+        [mergedFingerprint, versionId]
+      );
+    }
+
+    // Record in downloads table
+    await pool.query(
+      `INSERT INTO downloads (dataset_version_id, user_id, was_alerted, action_taken, bytes_saved)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [versionId, req.user.id, false, "registered_external_download", 0]
+    );
+
+    // Check for near duplicates and record relationships
+    const candidateShape = {
+      size_bytes: sizeBytes,
+      domain: datasetDomain,
+      title: datasetTitle,
+      description: "",
+      original_filename: filename,
+      schema_fingerprint: mergedFingerprint,
+      period_start: periodStart || null,
+      period_end: periodEnd || null,
+      spatial_region_name: spatialRegionName || null,
+    };
+    const nearMatch = await findBestMatch(candidateShape);
+    if (nearMatch && nearMatch.totalScore >= 60.0) {
+      await pool.query(
+        `INSERT INTO version_relationships
+          (version_a_id, version_b_id, relationship_type, similarity_score, score_breakdown)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [versionId, nearMatch.candidate.id, nearMatch.relationshipType, nearMatch.totalScore, nearMatch.breakdown]
+      );
+    }
+
+    await indexDataset({
+      datasetId,
+      title: datasetTitle,
+      description: `Auto-registered from external download (${sourceUrl || filename})`,
+      domain: datasetDomain,
+      ownerDepartment: req.user.department || "General",
+      classification: datasetClassification,
+      spatialRegionName: spatialRegionName || null,
+      periodStart: periodStart || null,
+      periodEnd: periodEnd || null,
+      createdAt: new Date().toISOString(),
+    }).catch(() => {});
+
+    await recordEvent({
+      event_type: "DOWNLOAD_AUTO_REGISTERED",
+      actor_id: req.user.id,
+      resource_type: "dataset_version",
+      resource_id: versionId,
+      details: { datasetId, sha256, filename, sourceUrl },
+    });
+
+    res.status(201).json({
+      status: "registered",
+      datasetId,
+      datasetVersionId: versionId,
+      message: "External download registered into central institute registry.",
+    });
+  } catch (err) {
+    console.error("[register-download] error:", err);
+    res.status(500).json({ error: "Failed to register download" });
+  } finally {
+    client.release?.();
+  }
+});
+
 
 /**
  * GET /api/datasets/dashboard/stats
@@ -479,11 +730,12 @@ router.get("/dashboard/stats", requireAuth, async (req, res) => {
   );
 
   res.json({
-    bandwidthSavedBytes: parseInt(bytesSaved.rows[0].total, 10),
-    duplicateDownloadsPrevented: parseInt(duplicatesPrevented.rows[0].total, 10),
-    topDuplicatedDatasets: topDuplicated.rows,
-    departmentUsage: departmentUsage.rows,
+    bandwidthSavedBytes: parseInt(bytesSaved.rows[0]?.total || 0, 10),
+    duplicateDownloadsPrevented: parseInt(duplicatesPrevented.rows[0]?.total || 0, 10),
+    topDuplicatedDatasets: topDuplicated.rows || [],
+    departmentUsage: departmentUsage.rows || [],
   });
+
 });
 
 /**

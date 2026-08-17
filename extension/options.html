@@ -2,42 +2,114 @@
 <html>
 <head>
   <meta charset="UTF-8" />
+  <title>DDAS Extension — Settings & Local Registry</title>
   <style>
     body {
       font-family: 'Inter', system-ui, sans-serif;
-      background: #F5F7FA;
+      background: #F8FAFC;
       color: #0F172A;
-      max-width: 420px;
+      max-width: 680px;
       margin: 40px auto;
-      padding: 0 16px;
+      padding: 0 20px;
+      line-height: 1.5;
     }
-    h1 { font-size: 18px; font-weight: 600; }
-    label { display: block; font-size: 12px; color: #475569; margin: 16px 0 4px; }
-    input {
-      width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid #DDE3EC;
-      border-radius: 3px; font-size: 13px;
+    h1 { font-size: 20px; font-weight: 600; color: #0F172A; margin-bottom: 4px; }
+    h2 { font-size: 15px; font-weight: 600; color: #1E293B; margin-top: 28px; margin-bottom: 8px; border-bottom: 1px solid #E2E8F0; padding-bottom: 6px; }
+    label { display: block; font-size: 12px; font-weight: 500; color: #475569; margin: 12px 0 4px; }
+    input[type="url"], input[type="text"] {
+      width: 100%; box-sizing: border-box; padding: 8px 12px; border: 1px solid #CBD5E1;
+      border-radius: 4px; font-size: 13px; background: #FFFFFF;
     }
-    input:focus { outline: none; border-color: #14B8A6; }
-    button {
-      margin-top: 16px; padding: 9px 16px; background: #0D1526; color: #F5F7FA;
-      border: none; border-radius: 3px; font-size: 13px; font-weight: 500; cursor: pointer;
+    input:focus { outline: none; border-color: #0D9488; }
+    .btn {
+      padding: 8px 14px; border-radius: 4px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: all 0.15s;
     }
+    .btn-primary { background: #0F172A; color: #FFFFFF; }
+    .btn-primary:hover { background: #1E293B; }
+    .btn-teal { background: #0D9488; color: #FFFFFF; }
+    .btn-teal:hover { background: #0F766E; }
+    .btn-outline { background: #FFFFFF; border: 1px solid #CBD5E1; color: #334155; }
+    .btn-outline:hover { background: #F1F5F9; color: #0F172A; }
+    .btn-danger { background: #FEE2E2; border: 1px solid #FECACA; color: #BE123C; }
+    .btn-danger:hover { background: #FCA5A5; color: #9F1239; }
     .saved { color: #0D9488; font-size: 12px; margin-top: 8px; display: none; }
-    .hint { font-size: 11px; color: #64748B; margin-top: 4px; }
+    .hint { font-size: 12px; color: #64748B; margin-top: 4px; }
+    .card { background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 16px; margin-top: 14px; }
+    .status-badge { display: inline-block; padding: 3px 8px; border-radius: 3px; font-size: 11px; font-family: 'JetBrains Mono', monospace; }
+    .status-ok { background: #DCFCE7; color: #166534; border: 1px solid #BBF7D0; }
+    .status-warn { background: #FEF3C7; color: #92400E; border: 1px solid #FDE68A; }
+    .file-table { width: 100%; font-size: 12px; border-collapse: collapse; margin-top: 12px; }
+    .file-table th { text-align: left; padding: 8px 6px; border-bottom: 2px solid #E2E8F0; color: #475569; font-weight: 600; }
+    .file-table td { padding: 8px 6px; border-bottom: 1px solid #F1F5F9; vertical-align: middle; }
+    .file-name { font-weight: 500; color: #0F172A; }
+    .file-meta { font-size: 11px; color: #64748B; font-family: 'JetBrains Mono', monospace; }
+    .actions-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
   </style>
 </head>
 <body>
-  <h1>DDAS Extension — Settings</h1>
-  <label for="apiBase">DDAS API base URL</label>
-  <input id="apiBase" type="url" placeholder="http://localhost:4000" />
-  <div class="hint">
-    Point this at your DDAS backend — e.g. <code>http://localhost:4000</code> for local Docker Compose,
-    or your department's deployed instance.
+  <h1>DDAS Settings & Device Registry</h1>
+  <p class="hint" style="margin-top:0;">Configure backend connectivity and manage on-device duplicate detection registry.</p>
+
+  <div class="card">
+    <label for="apiBase">Institute DDAS API Base URL</label>
+    <input id="apiBase" type="url" placeholder="http://localhost:4000" />
+    <div class="hint">
+      Default for local instance: <code>http://localhost:4000</code>.
+    </div>
+    <div class="actions-row">
+      <button class="btn btn-primary" id="save">Save URL</button>
+      <span class="saved" id="saved">Saved ✓</span>
+    </div>
   </div>
-  <button id="save">Save</button>
-  <div class="saved" id="saved">Saved.</div>
+
+  <h2>Local Device Registry (Path A Offline Matching)</h2>
+  <div class="card">
+    <p class="hint" style="margin-top:0;">
+      DDAS indexes datasets on this device to flag near-duplicates offline without sending data to servers.
+    </p>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <div>
+        <strong>Downloads Folder Access:</strong>
+        <span id="dir-status" class="status-badge status-warn">Not connected</span>
+      </div>
+      <div class="actions-row" style="margin-top:0;">
+        <button class="btn btn-teal" id="select-dir-btn">📂 Grant Folder Access</button>
+        <button class="btn btn-outline" id="refresh-dir-btn">🔄 Re-scan Tracked Files</button>
+      </div>
+    </div>
+
+    <div class="actions-row">
+      <button class="btn btn-outline" id="manual-index-btn">📁 Index a Local File Manually</button>
+      <button class="btn btn-danger" id="clear-registry-btn">Clear Local Device Cache</button>
+    </div>
+    <input type="file" id="options-file-input" style="display:none" accept=".csv,.tsv,.json,.pdf,.xlsx,.xls,.png,.jpg,.jpeg" />
+
+    <div id="status-msg" style="margin-top:10px; font-size:12px;"></div>
+
+    <h3 style="font-size:13px; font-weight:600; margin-top:20px; margin-bottom:4px;">Tracked Files on Device (<span id="record-count">0</span>)</h3>
+    <div style="max-height: 280px; overflow-y: auto;">
+      <table class="file-table">
+        <thead>
+          <tr>
+            <th>Filename</th>
+            <th>Size</th>
+            <th>Source</th>
+            <th>Indexed</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="records-table-body">
+          <tr><td colspan="5" style="text-align:center; color:#94A3B8; padding:16px;">No tracked files in local registry.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
 
   <script src="config.js"></script>
+  <script src="fingerprint.js"></script>
+  <script src="localStore.js"></script>
   <script src="options.js"></script>
 </body>
 </html>
+

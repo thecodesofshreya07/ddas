@@ -1,5 +1,7 @@
 const jwt = require("jsonwebtoken");
 
+const JWT_SECRET = process.env.JWT_SECRET || "ddas-insecure-dev-secret-change-in-prod";
+
 /**
  * Verifies the JWT and attaches { id, email, role, department } to req.user.
  * Every route that touches data should sit behind this — there is no
@@ -15,13 +17,14 @@ function requireAuth(req, res, next) {
   }
 
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    const payload = jwt.verify(token, JWT_SECRET);
     req.user = payload;
     next();
   } catch (err) {
     return res.status(401).json({ error: "Invalid or expired token" });
   }
 }
+
 
 /**
  * Restricts a route to specific roles, e.g. requireRole("admin").

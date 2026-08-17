@@ -1,29 +1,62 @@
 const { Queue } = require("bullmq");
 const IORedis = require("ioredis");
 
-// BullMQ stands in for Kafka in this build: same purpose (decouple the fast
-// upload response from expensive async processing), far less operational
-// overhead for a 5-day build. The job payload/handler shape below ports
-// directly to a Kafka consumer if this ever needs to scale further.
-const connection = new IORedis(process.env.REDIS_URL, {
-  maxRetriesPerRequest: null,
-});
+let connection = null;
+let fingerprintQueue = null;
+let useLocalQueue = false;
 
-const fingerprintQueue = new Queue("fingerprint", { connection });
+try {
+  if (process.env.REDIS_URL) {
+    connection = new IORedis(process.env.REDIS_URL, {
+      maxRetriesPerRequest: null,
+      enableOfflineQueue: false,
+      lazyConnect: true,
+      retryStrategy: () => null, // Don't hang on connection fail
+    });
+    connection.on("error", () => {
+      useLocalQueue = true;
+    });
+    connection.connect().catch(() => {
+      useLocalQueue = true;
+    });
+    fingerprintQueue = new Queue("fingerprint", { connection });
+  } else {
+    useLocalQueue = true;
+  }
+} catch {
+  useLocalQueue = true;
+}
 
 /**
- * Enqueues a newly-uploaded file for async processing:
- * structural fingerprinting, similarity scoring, search indexing.
- * The API returns immediately after this — the user isn't blocked on
- * a potentially slow analysis pipeline.
+ * Enqueues a newly-uploaded file for async processing.
+ * Falls back to in-process execution if Redis is not running.
  */
 async function enqueueFingerprintJob(payload) {
-  return fingerprintQueue.add("fingerprint-file", payload, {
-    attempts: 3,
-    backoff: { type: "exponential", delay: 2000 },
-    removeOnComplete: 100,
-    removeOnFail: false, // keep failures visible for debugging/demo
+  if (!useLocalQueue && fingerprintQueue) {
+    try {
+      return await fingerprintQueue.add("fingerprint-file", payload, {
+        attempts: 3,
+        backoff: { type: "exponential", delay: 2000 },
+        removeOnComplete: 100,
+        removeOnFail: false,
+      });
+    } catch {
+      useLocalQueue = true;
+    }
+  }
+
+  // Local in-memory asynchronous worker fallback
+  setImmediate(async () => {
+    try {
+      const { processFingerprintJob } = require("./fingerprintJobRunner");
+      await processFingerprintJob(payload);
+    } catch (err) {
+      console.warn("[queue:local] error executing fingerprint job:", err.message);
+    }
   });
+
+  return { id: `local-${Date.now()}` };
 }
 
 module.exports = { connection, fingerprintQueue, enqueueFingerprintJob };
+

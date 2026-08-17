@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <style>
     body {
-      width: 300px;
+      width: 320px;
       margin: 0;
       font-family: 'Inter', system-ui, sans-serif;
       background: #0D1526;
@@ -19,24 +19,32 @@
     .header .subtitle { font-size: 10px; color: #64748B; font-family: 'JetBrains Mono', monospace; }
     .content { padding: 16px; }
     label { display: block; font-size: 11px; color: #94A3B8; margin-bottom: 4px; }
-    input {
+    input[type="text"], input[type="email"], input[type="password"] {
       width: 100%; box-sizing: border-box; background: #131E33; border: 1px solid #1B2A45;
       border-radius: 3px; padding: 7px 10px; color: #F5F7FA; font-size: 13px; margin-bottom: 10px;
     }
     input:focus { outline: none; border-color: #14B8A6; }
     button {
       width: 100%; padding: 9px; border-radius: 3px; border: none; font-size: 13px;
-      font-weight: 500; cursor: pointer;
+      font-weight: 500; cursor: pointer; transition: all 0.15s;
     }
     .btn-primary { background: #14B8A6; color: #0A0F1C; }
+    .btn-primary:hover { opacity: 0.9; }
     .btn-secondary { background: transparent; color: #94A3B8; border: 1px solid #1B2A45; margin-top: 8px; }
+    .btn-secondary:hover { color: #F5F7FA; border-color: #334155; }
+    .btn-accent { background: #1E293B; color: #38BDF8; border: 1px solid #0284C7; margin-top: 8px; }
+    .btn-accent:hover { background: #0369A1; color: #FFFFFF; }
     .error { color: #FB7185; font-size: 12px; margin-bottom: 10px; }
-    .user-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+    .success-banner { background: #064E3B; border: 1px solid #059669; color: #A7F3D0; font-size: 11px; padding: 8px 10px; border-radius: 3px; margin-bottom: 10px; line-height: 1.4; }
+    .user-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
     .user-name { font-size: 13px; font-weight: 500; }
     .user-meta { font-size: 10px; color: #64748B; font-family: 'JetBrains Mono', monospace; margin-top: 2px; }
-    .toggle-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-top: 1px solid #1B2A45; }
+    .toggle-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-top: 1px solid #1B2A45; }
     .toggle-label { font-size: 12px; }
-    .footer-link { font-size: 11px; color: #64748B; text-align: center; margin-top: 10px; display: block; }
+    .stats-badge { display: flex; justify-content: space-between; align-items: center; background: #131E33; border: 1px solid #1B2A45; border-radius: 3px; padding: 6px 10px; margin: 8px 0; font-size: 11px; color: #94A3B8; }
+    .stats-count { font-family: 'JetBrains Mono', monospace; font-weight: 600; color: #14B8A6; }
+    .footer-link { font-size: 11px; color: #64748B; text-align: center; margin-top: 10px; display: block; text-decoration: none; }
+    .footer-link:hover { color: #94A3B8; text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -50,7 +58,11 @@
   <div class="content" id="content">
     <!-- populated by popup.js -->
   </div>
+  <input type="file" id="local-file-input" style="display:none" accept=".csv,.tsv,.json,.pdf,.xlsx,.xls,.png,.jpg,.jpeg" />
   <script src="config.js"></script>
+  <script src="fingerprint.js"></script>
+  <script src="localStore.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
+

@@ -87,6 +87,44 @@ export default function Upload() {
     if (!form.title) {
       update("title", f.name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " "));
     }
+
+    // Auto-infer period from CSV date column if available
+    if (f.name.endsWith(".csv") || f.type === "text/csv") {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const text = event.target.result;
+          const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0).slice(0, 500);
+          if (lines.length > 1) {
+            const delim = lines[0].includes("\t") ? "\t" : ",";
+            const cols = lines[0].split(delim).map((c) => c.trim().replace(/^["']|["']$/g, ""));
+            const dateColIdx = cols.findIndex((c) => /date|time|timestamp|year|month|period|datetime/i.test(c));
+            if (dateColIdx !== -1) {
+              const dates = [];
+              for (let i = 1; i < lines.length; i++) {
+                const parts = lines[i].split(delim);
+                const raw = parts[dateColIdx]?.trim().replace(/^["']|["']$/g, "");
+                if (raw) {
+                  const ts = Date.parse(raw);
+                  if (!isNaN(ts)) dates.push(new Date(ts));
+                }
+              }
+              if (dates.length > 0) {
+                dates.sort((a, b) => a.getTime() - b.getTime());
+                const minD = dates[0].toISOString().split("T")[0];
+                const maxD = dates[dates.length - 1].toISOString().split("T")[0];
+                setForm((prev) => ({
+                  ...prev,
+                  period_start: prev.period_start || minD,
+                  period_end: prev.period_end || maxD,
+                }));
+              }
+            }
+          }
+        } catch {}
+      };
+      reader.readAsText(f.slice(0, 300000));
+    }
   }
 
   function canAdvance() {
@@ -114,6 +152,7 @@ export default function Upload() {
         setPhase("exact_duplicate");
         return;
       }
+
 
       setVersionId(data.datasetVersionId);
       setPhase("analyzing");

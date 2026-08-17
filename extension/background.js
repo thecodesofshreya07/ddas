@@ -69,22 +69,43 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const pending = pendingDecisions.get(downloadId);
     if (pending) {
       pendingDecisions.delete(downloadId);
-      if (action === "cancel") {
-        chrome.downloads.cancel(downloadId, () => {
+      if (message.action === "cancel") {
+        console.log(`[DDAS Interceptor] User chose to cancel duplicate download ${message.downloadId}`);
+        chrome.downloads.cancel(message.downloadId, () => {
           if (chrome.runtime.lastError) {
-            console.warn("[DDAS] Error cancelling download:", chrome.runtime.lastError.message);
+            console.warn("[DDAS] cancel error:", chrome.runtime.lastError.message);
           }
         });
-      } else {
-        allowedDownloadIds.add(downloadId);
+      } else if (message.action === "continue") {
+        console.log(`[DDAS Interceptor] User chose to continue download ${message.downloadId}`);
+        allowedDownloadIds.add(message.downloadId);
         if (pending.fingerprint) {
           saveLocalRecord(pending.fingerprint).catch(() => {});
+          registerDownloadOnServer(pending.fingerprint, pending.item?.filename, pending.item?.url).catch(() => {});
         }
         pending.suggest();
       }
     }
     sendResponse({ ok: true });
     return false;
+  }
+  if (message.type === "INDEX_LOCAL_FILE") {
+    saveLocalRecord(message.fingerprint)
+      .then(() => sendResponse({ ok: true }))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true;
+  }
+  if (message.type === "GET_LOCAL_RECORDS") {
+    getAllLocalRecords()
+      .then((records) => sendResponse({ ok: true, records }))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true;
+  }
+  if (message.type === "DELETE_LOCAL_RECORD") {
+    deleteLocalRecord(message.sha256)
+      .then(() => sendResponse({ ok: true }))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true;
   }
   if (message.type === "CLEAR_LOCAL_CACHE") {
     clearLocalStore().then(() => sendResponse({ ok: true })).catch((err) => sendResponse({ ok: false, error: err.message }));
@@ -104,6 +125,9 @@ chrome.downloads.onChanged.addListener((change) => {
 /**
  * Global download interceptor — catches ALL downloads in the browser:
  * Direct clicks, WhatsApp Web, Blob URLs, JavaScript triggers.
+ *
+ * Runs the EXACT same pipeline as the test bench:
+ * fetchAndFingerprint -> findLocalDuplicates -> contentSimilarity -> scoreCandidate
  */
 chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
   // If download was initiated by DDAS extension or already explicitly allowed, proceed
@@ -127,24 +151,26 @@ chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
         return;
       }
 
+      console.log(`[DDAS Interceptor] >>> Live download intercepted: "${item.filename}" (${item.mime || "unknown mime"})`);
+
       // Step 1: Compute hash and content signature (tab context first for cookies/session, then worker)
       let fingerprint = null;
       try {
         fingerprint = await fetchFingerprintFromTab(item);
       } catch (tabErr) {
-        console.warn("[DDAS] Tab context fetch failed:", tabErr.message);
+        console.warn("[DDAS Interceptor] Tab context fetch failed:", tabErr.message);
       }
 
       if (!fingerprint) {
         try {
           fingerprint = await fetchAndFingerprint(item.url, item.filename);
         } catch (workerErr) {
-          console.warn("[DDAS] Worker fetch failed:", workerErr.message);
+          console.warn("[DDAS Interceptor] Worker fetch failed:", workerErr.message);
         }
       }
 
       if (!fingerprint) {
-        console.warn("[DDAS] Could not fingerprint download, failing open:", item.filename);
+        console.warn("[DDAS Interceptor] Could not fingerprint download, failing open:", item.filename);
         suggest();
         return;
       }
@@ -153,8 +179,20 @@ chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
       const merged = await runDualPathCheck(fingerprint, item.filename, item.url);
       const score = Number(merged.similarityScore) || 0;
 
+      console.log(`[DDAS Interceptor] Scoring summary for "${item.filename}":`, {
+        byteHashMatch: Boolean(merged.isExact),
+        contentScore: `${merged.breakdown?.content ?? 0}%`,
+        structuralScore: `${merged.breakdown?.schema ?? 0}%`,
+        filenameScore: `${merged.breakdown?.metadata ?? 0}%`,
+        finalBlendedScore: `${score}%`,
+        matchSource: merged.matchSource,
+        existingMatch: merged.existing?.fileName || "None",
+        relationshipType: merged.relationshipType || merged.status,
+      });
+
       // Step 3: If duplicate or near-duplicate found (score >= 60.0), alert user!
       if (score >= 60.0 && (merged.status === "exact_duplicate" || merged.status === "similar" || merged.status === "related")) {
+        console.log(`[DDAS Interceptor] Duplicate/Near-Duplicate found (${score}%) — pausing download for user decision modal.`);
         pendingDecisions.set(item.id, { suggest, item, fingerprint });
 
         const shownInTab = await showAlertInTab(item, merged, fingerprint);
@@ -169,8 +207,10 @@ chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
           setTimeout(() => {
             if (pendingDecisions.has(item.id)) {
               const p = pendingDecisions.get(item.id);
-              pendingDecisions.delete(item.id);
-              if (p?.fingerprint) saveLocalRecord(p.fingerprint).catch(() => {});
+              if (p?.fingerprint) {
+                saveLocalRecord(p.fingerprint).catch(() => {});
+                registerDownloadOnServer(p.fingerprint, p.item?.filename, p.item?.url).catch(() => {});
+              }
               suggest();
             }
           }, 25000);
@@ -178,11 +218,13 @@ chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
         return;
       }
 
-      // If no duplicate found or below threshold, record locally and allow download immediately
+      // If no duplicate found or below threshold, record locally and register on server, then allow download
+      console.log(`[DDAS Interceptor] No duplicate found (<60.0%). Saving to device registry & central server, proceeding.`);
       saveLocalRecord(fingerprint).catch(() => {});
+      registerDownloadOnServer(fingerprint, item.filename, item.url).catch(() => {});
       suggest();
     } catch (err) {
-      console.warn("[DDAS] Global interception check failed, failing open:", err.message);
+      console.warn("[DDAS Interceptor] Global interception check failed, failing open:", err.message);
       suggest();
     }
   })();
@@ -191,11 +233,45 @@ chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
 });
 
 /**
+ * Auto-registers completed download on central institute server (Gap 1).
+ */
+async function registerDownloadOnServer(fingerprint, filename, url) {
+  try {
+    const { token } = await getAuth();
+    if (!token || navigator.onLine === false) return;
+
+    const apiBase = await getApiBase();
+    await fetch(`${apiBase}/api/datasets/register-download`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        sha256: fingerprint.sha256,
+        sizeBytes: fingerprint.sizeBytes,
+        filename: filename || fingerprint.fileName || "downloaded_file.csv",
+        title: filename || fingerprint.fileName,
+        schemaFingerprint: fingerprint.schemaFingerprint,
+        contentSignature: fingerprint.contentSignature,
+        sourceUrl: url || fingerprint.downloadUrl,
+        periodStart: fingerprint.periodStart || null,
+        periodEnd: fingerprint.periodEnd || null,
+        spatialRegionName: fingerprint.spatialRegionName || null,
+      }),
+    });
+  } catch (err) {
+    console.warn("[DDAS] Server auto-registration failed (non-fatal):", err.message);
+  }
+}
+
+/**
  * Runs Path A (Device check) and Path B (Registry check) in parallel/orchestration.
  */
 async function runDualPathCheck(fingerprint, filename, url) {
   // ---- Path A: local on-device check. Always runs, zero network, no auth needed. ----
-  const localMatches = await findLocalDuplicates(fingerprint).catch(() => []);
+  const localMatches = await findLocalDuplicates(fingerprint).catch((err) => {
+    console.warn("[DDAS] local search error:", err);
+    return [];
+  });
+
   let localResult = { status: "none", matchSource: "device" };
   if (localMatches.length > 0) {
     const top = localMatches[0];
@@ -211,6 +287,9 @@ async function runDualPathCheck(fingerprint, filename, url) {
         title: top.record.fileName || top.record.filename || "Local file",
         fileName: top.record.fileName || top.record.filename || "Local file",
         uploadedAt: new Date(top.record.downloadedAt || top.record.timestamp || Date.now()).toISOString(),
+        periodStart: top.record.periodStart || null,
+        periodEnd: top.record.periodEnd || null,
+        spatialRegionName: top.record.spatialRegionName || null,
       },
     };
   }
@@ -228,6 +307,7 @@ async function runDualPathCheck(fingerprint, filename, url) {
   const merged = mergeResults(localResult, serverResult);
   return { ...merged, fingerprint };
 }
+
 
 async function handleCheckDownload(url, filename, precomputedFingerprint = null) {
   const enabled = await isInterceptionEnabled();
@@ -267,6 +347,9 @@ async function checkServer(fingerprint, filename, url, token) {
         schemaFingerprint: fingerprint.schemaFingerprint,
         contentSignature: fingerprint.contentSignature,
         sourceUrl: url,
+        periodStart: fingerprint.periodStart || null,
+        periodEnd: fingerprint.periodEnd || null,
+        spatialRegionName: fingerprint.spatialRegionName || null,
       }),
     });
 
@@ -287,6 +370,7 @@ async function checkServer(fingerprint, filename, url, token) {
 }
 
 function mergeResults(local, server) {
+
   if (local.status === "exact_duplicate") return local;
   if (!server || server.status === "none" || !server.similarityScore || server.similarityScore < 60.0) return local;
   if (local.status === "none") return server;
