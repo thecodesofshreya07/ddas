@@ -1,57 +1,69 @@
 // DDAS Content Script — renders isolated Shadow DOM alert modals and provides tab-context fingerprinting.
 
-let activeOverlay = null;
-
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === "FETCH_AND_FINGERPRINT_TAB") {
-    fetchAndFingerprint(message.url, message.filename)
-      .then((data) => sendResponse({ ok: true, data }))
-      .catch((err) => sendResponse({ ok: false, error: err.message }));
-    return true; // async response
+(function () {
+  if (typeof window !== "undefined" && window.__DDAS_CONTENT_SCRIPT_INITIALIZED__) {
+    return;
+  }
+  if (typeof window !== "undefined") {
+    window.__DDAS_CONTENT_SCRIPT_INITIALIZED__ = true;
   }
 
-  if (message.type === "SHOW_DOWNLOAD_ALERT") {
-    if (activeOverlay) {
-      activeOverlay.close();
+  let activeOverlay = null;
+
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === "FETCH_AND_FINGERPRINT_TAB") {
+      if (typeof fetchAndFingerprint !== "function") {
+        sendResponse({ ok: false, error: "fetchAndFingerprint is not available in page context" });
+        return false;
+      }
+      fetchAndFingerprint(message.url, message.filename)
+        .then((data) => sendResponse({ ok: true, data }))
+        .catch((err) => sendResponse({ ok: false, error: err.message }));
+      return true; // async response
     }
-    const overlay = showOverlay();
-    activeOverlay = overlay;
 
-    overlay.showAlert(message.result, {
-      onUseExisting: () => {
-        chrome.runtime.sendMessage({
-          type: "ALERT_RESPONSE",
-          downloadId: message.downloadId,
-          action: "cancel",
-        });
-        overlay.close();
-        activeOverlay = null;
-      },
-      onContinue: () => {
-        chrome.runtime.sendMessage({
-          type: "ALERT_RESPONSE",
-          downloadId: message.downloadId,
-          action: "continue",
-        });
-        overlay.close();
-        activeOverlay = null;
-      },
-    });
-    sendResponse({ ok: true });
-    return false;
-  }
+    if (message.type === "SHOW_DOWNLOAD_ALERT") {
+      if (activeOverlay) {
+        activeOverlay.close();
+      }
+      const overlay = showOverlay();
+      activeOverlay = overlay;
 
-  if (message.type === "CLOSE_ALERT") {
-    if (activeOverlay) {
-      activeOverlay.close();
-      activeOverlay = null;
+      overlay.showAlert(message.result, {
+        onUseExisting: () => {
+          chrome.runtime.sendMessage({
+            type: "ALERT_RESPONSE",
+            downloadId: message.downloadId,
+            action: "cancel",
+          });
+          overlay.close();
+          activeOverlay = null;
+        },
+        onContinue: () => {
+          chrome.runtime.sendMessage({
+            type: "ALERT_RESPONSE",
+            downloadId: message.downloadId,
+            action: "continue",
+          });
+          overlay.close();
+          activeOverlay = null;
+        },
+      });
+      sendResponse({ ok: true });
+      return false;
     }
-    sendResponse({ ok: true });
-    return false;
-  }
 
-  return false;
-});
+    if (message.type === "CLOSE_ALERT") {
+      if (activeOverlay) {
+        activeOverlay.close();
+        activeOverlay = null;
+      }
+      sendResponse({ ok: true });
+      return false;
+    }
+
+    return false;
+  });
 
 // ---------------------------------------------------------------------------
 // Overlay UI — rendered in a shadow root so the host page's CSS can't break
@@ -237,3 +249,4 @@ const OVERLAY_CSS = `
   .btn-secondary { background: #fff; color: #1B2A45; border: 1px solid #DDE3EC; }
   .btn-primary:hover, .btn-secondary:hover { opacity: 0.85; }
 `;
+})();

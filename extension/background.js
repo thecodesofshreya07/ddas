@@ -304,6 +304,13 @@ async function getActiveTabId() {
 
 async function ensureTabInjected(tabId) {
   try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => Boolean(window.__DDAS_CONTENT_SCRIPT_INITIALIZED__),
+    });
+    if (results && results[0]?.result) {
+      return true;
+    }
     await chrome.scripting.executeScript({
       target: { tabId },
       files: ["fingerprint.js", "content.js"],
