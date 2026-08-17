@@ -16,25 +16,37 @@ const allowedDownloadIds = new Set();
 const pendingDecisions = new Map(); // downloadId -> { suggest, item, fingerprint }
 
 function isTrackedFile(filename = "", mime = "", url = "") {
-  const lowerName = filename.toLowerCase();
-  if (TRACKED_EXTENSIONS.some((ext) => lowerName.endsWith(ext))) {
+  const lowerName = (filename || "").toLowerCase();
+  const lowerUrl = (url || "").toLowerCase();
+  const lowerMime = (mime || "").toLowerCase();
+
+  // 1. Check if filename has tracked dataset or media extension
+  if (TRACKED_EXTENSIONS.some((ext) => lowerName.includes(ext))) {
     return true;
   }
-  try {
-    const pathname = new URL(url).pathname.toLowerCase();
-    if (TRACKED_EXTENSIONS.some((ext) => pathname.endsWith(ext))) {
+
+  // 2. Check if URL contains tracked extension (including query parameters)
+  if (TRACKED_EXTENSIONS.some((ext) => lowerUrl.includes(ext))) {
+    return true;
+  }
+
+  // 3. Check MIME types
+  if (TRACKED_MIMES.some((m) => lowerMime.includes(m))) {
+    return true;
+  }
+
+  // 4. WhatsApp or messaging downloads
+  if (lowerUrl.includes("web.whatsapp.com") || /(IMG|VID|DOC|AUD|PTT)-\d{8}-WA\d+/i.test(filename)) {
+    return true;
+  }
+
+  // 5. Generic dataset/table downloads
+  if (lowerMime.includes("octet-stream") || lowerMime.includes("text/plain")) {
+    if (lowerUrl.includes("dataset") || lowerUrl.includes("download") || lowerUrl.includes("export") || lowerUrl.includes("data") || lowerUrl.includes("csv")) {
       return true;
     }
-  } catch {
-    // Ignore invalid or blob URL parsing
   }
-  if (mime && TRACKED_MIMES.some((m) => mime.toLowerCase().includes(m))) {
-    return true;
-  }
-  // WhatsApp downloads are often blob: or named without standard extension initially
-  if (url.includes("web.whatsapp.com") || /(IMG|VID|DOC|AUD|PTT)-\d{8}-WA\d+/i.test(filename)) {
-    return true;
-  }
+
   return false;
 }
 
@@ -115,13 +127,20 @@ chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
         return;
       }
 
-      // Step 1: Compute hash and content signature
+      // Step 1: Compute hash and content signature (tab context first for cookies/session, then worker)
       let fingerprint = null;
       try {
-        fingerprint = await fetchAndFingerprint(item.url, item.filename);
-      } catch (fetchErr) {
-        console.warn("[DDAS] Worker fetch failed, delegating to tab context:", fetchErr.message);
         fingerprint = await fetchFingerprintFromTab(item);
+      } catch (tabErr) {
+        console.warn("[DDAS] Tab context fetch failed:", tabErr.message);
+      }
+
+      if (!fingerprint) {
+        try {
+          fingerprint = await fetchAndFingerprint(item.url, item.filename);
+        } catch (workerErr) {
+          console.warn("[DDAS] Worker fetch failed:", workerErr.message);
+        }
       }
 
       if (!fingerprint) {
@@ -299,8 +318,15 @@ async function handleProceedDownload(url, filename, fingerprint) {
 
 async function getActiveTabId() {
   try {
-    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    return activeTab ? activeTab.id : null;
+    let [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    if (!tab) {
+      [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    }
+    if (!tab) {
+      const tabs = await chrome.tabs.query({ active: true });
+      tab = tabs[0];
+    }
+    return tab ? tab.id : null;
   } catch {
     return null;
   }
@@ -308,6 +334,10 @@ async function getActiveTabId() {
 
 async function ensureTabInjected(tabId) {
   try {
+    const tab = await chrome.tabs.get(tabId);
+    if (!tab || !tab.url || tab.url.startsWith("chrome://") || tab.url.startsWith("chrome-extension://") || tab.url.startsWith("edge://") || tab.url.startsWith("about:")) {
+      return false;
+    }
     const results = await chrome.scripting.executeScript({
       target: { tabId },
       func: () => Boolean(window.__DDAS_CONTENT_SCRIPT_INITIALIZED__),
