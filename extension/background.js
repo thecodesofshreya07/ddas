@@ -198,8 +198,8 @@ chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
         relationshipType: merged.relationshipType || merged.status,
       });
 
-      // Step 3: If duplicate or near-duplicate found (score >= 60.0), alert user!
-      if (score >= 60.0 && (merged.status === "exact_duplicate" || merged.status === "similar" || merged.status === "related")) {
+      // Step 3: If duplicate or near-duplicate found (per existing engine threshold), alert user!
+      if (merged.status && merged.status !== "none") {
         console.log(`[DDAS Interceptor] Duplicate/Near-Duplicate found (${score}%) — pausing download for user decision modal.`);
         pendingDecisions.set(item.id, { suggest, item, fingerprint });
 
@@ -216,8 +216,9 @@ chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
         return;
       }
 
-      // If no duplicate found or below threshold, record locally and register on server, then allow download
-      console.log(`[DDAS Interceptor] No duplicate found (<60.0%). Saving to device registry & central server, proceeding.`);
+      // If no duplicate found, record locally and register on server, then allow download
+      console.log(`[DDAS Interceptor] No duplicate found. Saving to device registry & central server, proceeding.`);
+
       saveLocalRecord(fingerprint).catch(() => {});
       registerDownloadOnServer(fingerprint, item.filename, item.url).catch(() => {});
       suggest();

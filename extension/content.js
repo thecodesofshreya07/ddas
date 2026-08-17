@@ -105,11 +105,13 @@ function showOverlay() {
   }
 
   function showAlert(result, { onUseExisting, onContinue }) {
-    const score = Number(result.similarityScore);
-    if (isNaN(score) || score < 60.0) {
+    if (!result || !result.status || result.status === "none") {
       onContinue();
       return;
     }
+
+    const score = Number(result.similarityScore) || 0;
+
 
     const isExact = Boolean((result.status === "exact_duplicate" || result.isExact) && score >= 100.0);
     const title = isExact

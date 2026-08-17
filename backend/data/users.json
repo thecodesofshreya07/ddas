@@ -88,5 +88,41 @@
     "department": "Agriculture",
     "role": "user",
     "createdAt": "2026-08-17T20:45:42.881Z"
+  },
+  {
+    "id": "u-1787000548000-519",
+    "username": "user_1787000547797",
+    "email": "user_1787000547797@ddas.gov.in",
+    "passwordHash": "$2a$10$z4ySrlj5gK4ZwsSJMn1y2OpH/6L8ZJPT/o1lVvIhQU.XoBZLs/UZm",
+    "department": "Geospatial Intelligence",
+    "role": "user",
+    "createdAt": "2026-08-17T21:02:28.000Z"
+  },
+  {
+    "id": "u-1787000703743-927",
+    "username": "user_1787000703472",
+    "email": "user_1787000703472@ddas.gov.in",
+    "passwordHash": "$2a$10$gViIEUpqo6TgKVIxiWpKsuPorZiXMFYVpaj905Kj2QGwCku/yTnSK",
+    "department": "Geospatial Intelligence",
+    "role": "user",
+    "createdAt": "2026-08-17T21:05:03.743Z"
+  },
+  {
+    "id": "u-1787000736449-634",
+    "username": "user_1787000736199",
+    "email": "user_1787000736199@ddas.gov.in",
+    "passwordHash": "$2a$10$JpGkclhWY5KdDxPSZBpMO.BAsNmQyCLBT4YB.WkclI5DfgIROG.Oi",
+    "department": "Geospatial Intelligence",
+    "role": "user",
+    "createdAt": "2026-08-17T21:05:36.449Z"
+  },
+  {
+    "id": "u-1787000961840-561",
+    "username": "user_1787000961600",
+    "email": "user_1787000961600@ddas.gov.in",
+    "passwordHash": "$2a$10$cs/h4s7TZ8l4QJU5NKR8s.SrJW65qHUQ7OX/ueY3jNucS2ammvBqa",
+    "department": "Geospatial Intelligence",
+    "role": "user",
+    "createdAt": "2026-08-17T21:09:21.840Z"
   }
 ]

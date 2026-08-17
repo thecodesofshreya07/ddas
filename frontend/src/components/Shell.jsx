@@ -93,12 +93,12 @@ export default function Shell({ children, breadcrumb }) {
       </a>
 
       {/* Top identity bar */}
-      <div className="bg-ink-950 border-b border-ink-800">
+      <div className="bg-ink-950 border-b border-ink-800 text-white">
         <div className="px-4 md:px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-4">
             <button
               onClick={() => setDrawerOpen(true)}
-              className="md:hidden text-surface-50 p-2 -ml-2"
+              className="md:hidden text-surface-50 p-2 -ml-2 hover:bg-ink-900 rounded"
               aria-label="Open navigation menu"
             >
               <Menu size={20} />
@@ -106,30 +106,66 @@ export default function Shell({ children, breadcrumb }) {
             <Link to="/" className="flex items-center gap-2.5">
               <Seal size={30} />
               <div className="leading-tight">
-                <div className="text-surface-50 font-display font-semibold text-sm">DDAS</div>
-                <div className="text-[10px] text-ink-600 tag-mono hidden sm:block">Departmental Portal</div>
+                <div className="text-white font-display font-semibold text-sm tracking-wide">DDAS</div>
+                <div className="text-[10px] text-cyan-400 font-mono hidden sm:block font-medium">Departmental Portal</div>
               </div>
             </Link>
+
+            {/* Desktop Top Navbar Links */}
+            <nav className="hidden lg:flex items-center gap-1 ml-4 border-l border-ink-800 pl-4">
+              {links.map((l) => (
+                <NavLink
+                  key={l.to}
+                  to={l.to}
+                  end={l.end}
+                  className={({ isActive }) =>
+                    `flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-medium transition-colors ${
+                      isActive
+                        ? "bg-verify-500/20 text-teal-300 border border-teal-500/40"
+                        : "text-slate-300 hover:text-white hover:bg-ink-900"
+                    }`
+                  }
+                >
+                  <l.icon size={14} className="shrink-0" />
+                  <span>{l.label}</span>
+                </NavLink>
+              ))}
+              {user?.role === "admin" && (
+                <NavLink
+                  to="/audit"
+                  className={({ isActive }) =>
+                    `flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-medium transition-colors ${
+                      isActive
+                        ? "bg-verify-500/20 text-teal-300 border border-teal-500/40"
+                        : "text-slate-300 hover:text-white hover:bg-ink-900"
+                    }`
+                  }
+                >
+                  <ShieldCheck size={14} className="shrink-0" />
+                  <span>Audit</span>
+                </NavLink>
+              )}
+            </nav>
           </div>
 
           <div className="flex items-center gap-3 md:gap-5">
             <button
-              className="hidden sm:flex items-center gap-1.5 text-xs text-surface-200/70 hover:text-surface-50"
+              className="hidden sm:flex items-center gap-1.5 text-xs text-slate-300 hover:text-white transition-colors"
               title="Help & documentation"
             >
               <HelpCircle size={14} />
-              Help
+              <span>Help</span>
             </button>
             <div className="h-4 w-px bg-ink-700 hidden sm:block" />
             <div className="text-right leading-tight hidden md:block">
-              <div className="text-xs text-surface-50 font-medium">{user?.name}</div>
-              <div className="text-[10px] text-ink-600 tag-mono">
+              <div className="text-xs text-white font-semibold tracking-tight">{user?.name || user?.username}</div>
+              <div className="text-[11px] text-teal-300 font-mono font-medium">
                 {user?.department} · {user?.role}
               </div>
             </div>
             <button
               onClick={handleLogout}
-              className="flex items-center gap-1.5 text-xs text-surface-200/70 hover:text-deny-500 transition-colors"
+              className="flex items-center gap-1.5 text-xs text-slate-300 hover:text-rose-400 transition-colors px-2 py-1 rounded hover:bg-ink-900"
               aria-label="Sign out"
             >
               <LogOut size={14} />
@@ -138,6 +174,7 @@ export default function Shell({ children, breadcrumb }) {
           </div>
         </div>
       </div>
+
 
       {/* Mobile drawer */}
       {drawerOpen && (

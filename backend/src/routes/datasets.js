@@ -386,6 +386,23 @@ router.post("/check", requireAuth, async (req, res) => {
       details: { filename, sourceUrl, relationshipType: "exact_duplicate", hasAccess },
     });
 
+    let exactUploader = null;
+    try {
+      const dl = await pool.query("SELECT username, department, download_location FROM downloads WHERE dataset_version_id = $1 ORDER BY downloaded_at DESC LIMIT 1", [exactMatch.id]);
+      if (dl.rows.length > 0 && dl.rows[0].username) {
+        exactUploader = dl.rows[0].username;
+      }
+    } catch {}
+    if (!exactUploader && exactMatch.uploaded_by) {
+      try {
+        const u = await pool.query("SELECT username, name FROM users WHERE id = $1", [exactMatch.uploaded_by]);
+        if (u.rows.length > 0) exactUploader = u.rows[0].username || u.rows[0].name;
+      } catch {}
+    }
+    if (!exactUploader) {
+      exactUploader = exactMatch.uploaded_by_username || exactMatch.username || "Institute Custodian";
+    }
+
     const existingPayload = hasAccess
       ? {
           datasetId: exactMatch.dataset_id,
@@ -395,8 +412,8 @@ router.post("/check", requireAuth, async (req, res) => {
           classification: exactMatch.classification,
           ownerDepartment: exactMatch.owner_department,
           uploadedAt: exactMatch.uploaded_at,
-          downloaderUsername: exactMatch.uploaded_by_username || exactMatch.username || "rahul",
-          downloadLocation: `${exactMatch.owner_department || "Registry"} / ${exactMatch.storage_key || "central_storage"}`,
+          downloaderUsername: exactUploader,
+          downloadLocation: `${exactMatch.owner_department || "Institute"} Department Registry`,
           downloadedAt: exactMatch.uploaded_at,
           periodStart: exactMatch.period_start || null,
           periodEnd: exactMatch.period_end || null,
@@ -404,6 +421,7 @@ router.post("/check", requireAuth, async (req, res) => {
           locationUrl: `http://localhost:5173/datasets/${exactMatch.dataset_id}`,
           hasAccess: true,
         }
+
       : {
           datasetId: null,
           datasetVersionId: null,
@@ -477,6 +495,23 @@ router.post("/check", requireAuth, async (req, res) => {
       },
     });
 
+    let candUploader = null;
+    try {
+      const dl = await pool.query("SELECT username, department, download_location FROM downloads WHERE dataset_version_id = $1 ORDER BY downloaded_at DESC LIMIT 1", [candidate.id]);
+      if (dl.rows.length > 0 && dl.rows[0].username) {
+        candUploader = dl.rows[0].username;
+      }
+    } catch {}
+    if (!candUploader && candidate.uploaded_by) {
+      try {
+        const u = await pool.query("SELECT username, name FROM users WHERE id = $1", [candidate.uploaded_by]);
+        if (u.rows.length > 0) candUploader = u.rows[0].username || u.rows[0].name;
+      } catch {}
+    }
+    if (!candUploader) {
+      candUploader = candidate.uploaded_by_username || candidate.username || "Institute Custodian";
+    }
+
     const existingPayload = hasAccess
       ? {
           datasetId: candidate.dataset_id,
@@ -486,8 +521,8 @@ router.post("/check", requireAuth, async (req, res) => {
           classification: candidate.classification,
           ownerDepartment: candidate.owner_department,
           uploadedAt: candidate.uploaded_at,
-          downloaderUsername: candidate.uploaded_by_username || candidate.username || "rahul",
-          downloadLocation: `${candidate.owner_department || "Registry"} / ${candidate.storage_key || "central_storage"}`,
+          downloaderUsername: candUploader,
+          downloadLocation: `${candidate.owner_department || "Institute"} Department Registry`,
           downloadedAt: candidate.uploaded_at,
           periodStart: candidate.period_start || null,
           periodEnd: candidate.period_end || null,
@@ -495,6 +530,7 @@ router.post("/check", requireAuth, async (req, res) => {
           locationUrl: `http://localhost:5173/datasets/${candidate.dataset_id}`,
           hasAccess: true,
         }
+
       : {
           datasetId: null,
           datasetVersionId: null,

@@ -491,7 +491,8 @@ class LocalDatabase {
           bytes_saved: bytes_saved || 0,
           username: u?.username || u?.name || "user",
           department: u?.department || ds?.owner_department || "General",
-          download_location: `${ds?.owner_department || "Registry"} / ${v?.storage_key || "central_storage"}`,
+          download_location: `${ds?.owner_department || u?.department || "Institute"} Department Registry`,
+
           downloaded_at: new Date().toISOString(),
         };
       }
@@ -504,8 +505,17 @@ class LocalDatabase {
     if (upper.startsWith("SELECT") && upper.includes("DATASET_VERSIONS") && upper.includes("DATASETS")) {
       let rows = this.dataset_versions.map((dv) => {
         const d = this.datasets.find((ds) => ds.id === dv.dataset_id) || {};
-        return { ...dv, ...d, id: dv.id, dataset_id: dv.dataset_id };
+        const u = this.users.find((user) => user.id === dv.uploaded_by) || {};
+        return {
+          ...dv,
+          ...d,
+          id: dv.id,
+          dataset_id: dv.dataset_id,
+          uploaded_by_username: u.username || u.name || dv.uploaded_by || "Institute User",
+          uploaded_by_name: u.name || u.username || "Institute User",
+        };
       });
+
 
       if (upper.includes("DV.SHA256 =")) {
         const hash = params[0];
