@@ -93,12 +93,19 @@ export default function Login() {
             >
               {loading ? "Signing in…" : "Sign in"}
             </button>
+
+            <div className="text-center pt-2">
+              <Link to="/signup" className="text-xs text-verify-500 hover:text-verify-400">
+                New to DDAS? Create an institute account →
+              </Link>
+            </div>
           </form>
 
           <div className="text-center text-xs text-ink-600 mt-5">
             Trouble signing in? Contact{" "}
             <span className="tag-mono">helpdesk@ddas.gov.in</span>
           </div>
+
         </div>
       </div>
     </div>

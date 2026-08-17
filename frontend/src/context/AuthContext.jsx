@@ -9,8 +9,20 @@ export function AuthProvider({ children }) {
     return raw ? JSON.parse(raw) : null;
   });
 
-  const login = useCallback(async (email, password) => {
-    const { data } = await api.post("/auth/login", { email, password });
+  const login = useCallback(async (identifier, password) => {
+    const { data } = await api.post("/auth/login", {
+      email: identifier.includes("@") ? identifier : undefined,
+      username: !identifier.includes("@") ? identifier : undefined,
+      password,
+    });
+    localStorage.setItem("ddas_token", data.token);
+    localStorage.setItem("ddas_user", JSON.stringify(data.user));
+    setUser(data.user);
+    return data.user;
+  }, []);
+
+  const signup = useCallback(async ({ username, password, department, role }) => {
+    const { data } = await api.post("/auth/signup", { username, password, department, role });
     localStorage.setItem("ddas_token", data.token);
     localStorage.setItem("ddas_user", JSON.stringify(data.user));
     setUser(data.user);
@@ -24,8 +36,9 @@ export function AuthProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, login, logout }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ user, login, signup, logout }}>{children}</AuthContext.Provider>
   );
+
 }
 
 export function useAuth() {

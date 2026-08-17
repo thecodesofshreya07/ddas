@@ -1,0 +1,152 @@
+import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { ArrowLeft, UserPlus } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
+import Seal from "../components/Seal";
+
+export default function Signup() {
+  const { signup } = useAuth();
+  const navigate = useNavigate();
+  const [username, setUsername] = useState("");
+  const [department, setDepartment] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState("user");
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters long.");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      await signup({ username, department, password, role });
+      navigate("/search");
+    } catch (err) {
+      setError(err.response?.data?.error || "Registration failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-ink-950 flex flex-col">
+      <div className="px-6 py-5 flex justify-between items-center">
+        <Link to="/" className="inline-flex items-center gap-1.5 text-xs text-surface-200/70 hover:text-surface-50">
+          <ArrowLeft size={14} />
+          Back to homepage
+        </Link>
+        <Link to="/login" className="text-xs text-verify-500 hover:text-verify-400">
+          Already have an account? Sign in →
+        </Link>
+      </div>
+
+      <div className="flex-1 flex items-center justify-center px-4 pb-16">
+        <div className="w-full max-w-md">
+          <div className="text-center mb-8">
+            <div className="flex justify-center mb-3">
+              <Seal size={52} />
+            </div>
+            <div className="font-display font-semibold text-2xl text-surface-50 tracking-tight">
+              Create Institute Account
+            </div>
+            <div className="text-xs text-ink-600 mt-1">
+              Data Download &amp; Duplication Alert System (DDAS)
+            </div>
+          </div>
+
+          <form
+            onSubmit={handleSubmit}
+            className="bg-ink-900 border border-ink-700 rounded-sm p-6 space-y-4 shadow-xl"
+          >
+            <div>
+              <label className="block text-xs font-medium text-surface-200/70 mb-1.5">
+                Username / Identifier *
+              </label>
+              <input
+                type="text"
+                required
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="w-full bg-ink-800 border border-ink-700 rounded-sm px-3 py-2 text-surface-50 text-sm focus:border-verify-500 outline-none"
+                placeholder="e.g. s_patel or priya.sharma"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-surface-200/70 mb-1.5">
+                Department / Division (Free text) *
+              </label>
+              <input
+                type="text"
+                required
+                value={department}
+                onChange={(e) => setDepartment(e.target.value)}
+                className="w-full bg-ink-800 border border-ink-700 rounded-sm px-3 py-2 text-surface-50 text-sm focus:border-verify-500 outline-none"
+                placeholder="e.g. Meteorology, GIS, Agriculture, AI Lab"
+              />
+              <p className="text-[11px] text-ink-600 mt-1">
+                Used for ABAC access control and download attribution across the institute.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-surface-200/70 mb-1.5">
+                Password *
+              </label>
+              <input
+                type="password"
+                required
+                minLength={6}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full bg-ink-800 border border-ink-700 rounded-sm px-3 py-2 text-surface-50 text-sm focus:border-verify-500 outline-none"
+                placeholder="Minimum 6 characters"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-surface-200/70 mb-1.5">
+                Institutional Role
+              </label>
+              <select
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+                className="w-full bg-ink-800 border border-ink-700 rounded-sm px-3 py-2 text-surface-50 text-sm focus:border-verify-500 outline-none"
+              >
+                <option value="user">Researcher / Officer (user)</option>
+                <option value="department_admin">Department Admin</option>
+                <option value="admin">System Administrator</option>
+              </select>
+            </div>
+
+            {error && (
+              <div className="text-sm text-deny-500 bg-deny-500/10 border border-deny-500/30 rounded-sm px-3 py-2">
+                {error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full flex items-center justify-center gap-2 bg-verify-500 hover:bg-verify-600 disabled:opacity-50 text-ink-950 font-medium text-sm py-2.5 rounded-sm transition-colors"
+            >
+              <UserPlus size={16} />
+              {loading ? "Creating account…" : "Register & Sign in"}
+            </button>
+          </form>
+
+          <div className="text-center text-xs text-ink-600 mt-5">
+            Registered accounts are cryptographically stored with bcrypt hashing.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

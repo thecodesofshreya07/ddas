@@ -462,19 +462,43 @@ class LocalDatabase {
     }
 
     if (upper.startsWith("INSERT INTO DOWNLOADS")) {
-      const [dataset_version_id, user_id, was_alerted, action_taken, bytes_saved] = params;
-      const d = {
-        id: `dl-${Date.now()}`,
-        dataset_version_id,
-        user_id,
-        was_alerted: Boolean(was_alerted),
-        action_taken,
-        bytes_saved: bytes_saved || 0,
-        downloaded_at: new Date().toISOString(),
-      };
+      let d;
+      if (params.length >= 8) {
+        const [dataset_version_id, user_id, was_alerted, action_taken, bytes_saved, username, department, download_location] = params;
+        d = {
+          id: `dl-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          dataset_version_id,
+          user_id,
+          was_alerted: Boolean(was_alerted),
+          action_taken,
+          bytes_saved: bytes_saved || 0,
+          username: username || "user",
+          department: department || "General",
+          download_location: download_location || "Registry Storage",
+          downloaded_at: new Date().toISOString(),
+        };
+      } else {
+        const [dataset_version_id, user_id, was_alerted, action_taken, bytes_saved] = params;
+        const u = this.users.find((user) => user.id === user_id);
+        const v = this.dataset_versions.find((ver) => ver.id === dataset_version_id);
+        const ds = v ? this.datasets.find((data) => data.id === v.dataset_id) : null;
+        d = {
+          id: `dl-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          dataset_version_id,
+          user_id,
+          was_alerted: Boolean(was_alerted),
+          action_taken,
+          bytes_saved: bytes_saved || 0,
+          username: u?.username || u?.name || "user",
+          department: u?.department || ds?.owner_department || "General",
+          download_location: `${ds?.owner_department || "Registry"} / ${v?.storage_key || "central_storage"}`,
+          downloaded_at: new Date().toISOString(),
+        };
+      }
       this.downloads.push(d);
       return { rows: [d] };
     }
+
 
     // 7. Datasets & Versions Joined
     if (upper.startsWith("SELECT") && upper.includes("DATASET_VERSIONS") && upper.includes("DATASETS")) {

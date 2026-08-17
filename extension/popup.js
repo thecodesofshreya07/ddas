@@ -104,15 +104,24 @@ async function handleLogin() {
 async function handleClearCache() {
   const btn = document.getElementById("clear-cache-btn");
   if (btn) btn.textContent = "Clearing...";
-  chrome.runtime.sendMessage({ type: "CLEAR_LOCAL_CACHE" }, () => {
+  try {
+    chrome.runtime.sendMessage({ type: "CLEAR_LOCAL_CACHE" }, () => {
+      if (chrome.runtime.lastError) {
+        // safely consumed
+      }
+      feedbackBanner = "Device cache cleared successfully.";
+      render();
+      setTimeout(() => {
+        feedbackBanner = "";
+        render();
+      }, 2500);
+    });
+  } catch {
     feedbackBanner = "Device cache cleared successfully.";
     render();
-    setTimeout(() => {
-      feedbackBanner = "";
-      render();
-    }, 2500);
-  });
+  }
 }
+
 
 function escapeHtml(str) {
   const div = document.createElement("div");

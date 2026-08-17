@@ -395,6 +395,9 @@ router.post("/check", requireAuth, async (req, res) => {
           classification: exactMatch.classification,
           ownerDepartment: exactMatch.owner_department,
           uploadedAt: exactMatch.uploaded_at,
+          downloaderUsername: exactMatch.uploaded_by_username || exactMatch.username || "rahul",
+          downloadLocation: `${exactMatch.owner_department || "Registry"} / ${exactMatch.storage_key || "central_storage"}`,
+          downloadedAt: exactMatch.uploaded_at,
           periodStart: exactMatch.period_start || null,
           periodEnd: exactMatch.period_end || null,
           spatialRegionName: exactMatch.spatial_region_name || null,
@@ -409,6 +412,9 @@ router.post("/check", requireAuth, async (req, res) => {
           classification: exactMatch.classification || "restricted",
           ownerDepartment: exactMatch.owner_department ? `${exactMatch.owner_department} Department` : "Restricted Custodian",
           uploadedAt: exactMatch.uploaded_at,
+          downloaderUsername: null,
+          downloadLocation: null,
+          downloadedAt: null,
           periodStart: exactMatch.period_start || null,
           periodEnd: exactMatch.period_end || null,
           spatialRegionName: exactMatch.spatial_region_name || null,
@@ -480,6 +486,9 @@ router.post("/check", requireAuth, async (req, res) => {
           classification: candidate.classification,
           ownerDepartment: candidate.owner_department,
           uploadedAt: candidate.uploaded_at,
+          downloaderUsername: candidate.uploaded_by_username || candidate.username || "rahul",
+          downloadLocation: `${candidate.owner_department || "Registry"} / ${candidate.storage_key || "central_storage"}`,
+          downloadedAt: candidate.uploaded_at,
           periodStart: candidate.period_start || null,
           periodEnd: candidate.period_end || null,
           spatialRegionName: candidate.spatial_region_name || null,
@@ -494,6 +503,9 @@ router.post("/check", requireAuth, async (req, res) => {
           classification: candidate.classification || "restricted",
           ownerDepartment: candidate.owner_department ? `${candidate.owner_department} Department` : "Restricted Custodian",
           uploadedAt: candidate.uploaded_at,
+          downloaderUsername: null,
+          downloadLocation: null,
+          downloadedAt: null,
           periodStart: candidate.period_start || null,
           periodEnd: candidate.period_end || null,
           spatialRegionName: candidate.spatial_region_name || null,
@@ -554,12 +566,26 @@ router.post("/register-download", requireAuth, async (req, res) => {
 
   const exactMatch = await findExactDuplicate(sha256);
   if (exactMatch) {
-    // Canonical record already exists — link this download event
+    // Canonical record already exists — link this download event with attribution
+    const currentUsername = req.user.username || req.user.name || "user";
+    const currentDept = req.user.department || "General";
+    const downloadLocation = `${exactMatch.owner_department || "Registry"} / ${exactMatch.storage_key || "central_storage"}`;
+
     await pool.query(
-      `INSERT INTO downloads (dataset_version_id, user_id, was_alerted, action_taken, bytes_saved)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [exactMatch.id, req.user.id, false, "registered_external_download", 0]
+      `INSERT INTO downloads (dataset_version_id, user_id, was_alerted, action_taken, bytes_saved, username, department, download_location)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        exactMatch.id,
+        req.user.id,
+        false,
+        "registered_external_download",
+        0,
+        currentUsername,
+        currentDept,
+        downloadLocation,
+      ]
     );
+
 
     await recordEvent({
       event_type: "DOWNLOAD_REGISTERED_LINKED",
@@ -640,12 +666,17 @@ router.post("/register-download", requireAuth, async (req, res) => {
       );
     }
 
-    // Record in downloads table
+    // Record in downloads table with attribution
+    const currentUsername = req.user.username || req.user.name || "user";
+    const currentDept = req.user.department || "General";
+    const downloadLocation = `${currentDept} / ${storageKey}`;
+
     await pool.query(
-      `INSERT INTO downloads (dataset_version_id, user_id, was_alerted, action_taken, bytes_saved)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [versionId, req.user.id, false, "registered_external_download", 0]
+      `INSERT INTO downloads (dataset_version_id, user_id, was_alerted, action_taken, bytes_saved, username, department, download_location)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [versionId, req.user.id, false, "registered_external_download", 0, currentUsername, currentDept, downloadLocation]
     );
+
 
     // Check for near duplicates and record relationships
     const candidateShape = {

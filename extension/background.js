@@ -52,7 +52,9 @@ function isTrackedFile(filename = "", mime = "", url = "") {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "CHECK_DOWNLOAD") {
-    handleCheckDownload(message.url, message.filename, message.fingerprint).then(sendResponse);
+    handleCheckDownload(message.url, message.filename, message.fingerprint)
+      .then((res) => sendResponse(res || { status: "none" }))
+      .catch((err) => sendResponse({ status: "error", error: err.message }));
     return true;
   }
   if (message.type === "PROCEED_DOWNLOAD") {
@@ -61,7 +63,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
   if (message.type === "GET_AUTH") {
-    getAuth().then(sendResponse);
+    getAuth()
+      .then((auth) => sendResponse(auth || {}))
+      .catch(() => sendResponse({}));
     return true;
   }
   if (message.type === "ALERT_RESPONSE") {
@@ -69,16 +73,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const pending = pendingDecisions.get(downloadId);
     if (pending) {
       pendingDecisions.delete(downloadId);
-      if (message.action === "cancel") {
-        console.log(`[DDAS Interceptor] User chose to cancel duplicate download ${message.downloadId}`);
-        chrome.downloads.cancel(message.downloadId, () => {
+      if (action === "cancel") {
+        console.log(`[DDAS Interceptor] User chose to cancel duplicate download ${downloadId}`);
+        chrome.downloads.cancel(downloadId, () => {
           if (chrome.runtime.lastError) {
-            console.warn("[DDAS] cancel error:", chrome.runtime.lastError.message);
+            // safely consume lastError
           }
         });
-      } else if (message.action === "continue") {
-        console.log(`[DDAS Interceptor] User chose to continue download ${message.downloadId}`);
-        allowedDownloadIds.add(message.downloadId);
+      } else if (action === "continue") {
+        console.log(`[DDAS Interceptor] User chose to continue download ${downloadId}`);
+        allowedDownloadIds.add(downloadId);
         if (pending.fingerprint) {
           saveLocalRecord(pending.fingerprint).catch(() => {});
           registerDownloadOnServer(pending.fingerprint, pending.item?.filename, pending.item?.url).catch(() => {});
@@ -108,11 +112,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   if (message.type === "CLEAR_LOCAL_CACHE") {
-    clearLocalStore().then(() => sendResponse({ ok: true })).catch((err) => sendResponse({ ok: false, error: err.message }));
+    clearLocalStore()
+      .then(() => sendResponse({ ok: true }))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
     return true;
   }
+  sendResponse({ ok: false, error: "Unknown message type" });
   return false;
 });
+
 
 // Clean up state when downloads finish or are interrupted
 chrome.downloads.onChanged.addListener((change) => {
@@ -202,18 +210,8 @@ chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
             type: "basic",
             iconUrl: "icons/icon-128.png",
             title: merged.status === "exact_duplicate" ? "DDAS: Duplicate Download Detected" : "DDAS: Near-Duplicate Dataset Found",
-            message: `"${item.filename}" is already ${merged.matchSource === "device" ? "on this device" : "in the institute registry"} (${score.toFixed(1)}% match).`,
+            message: `"${item.filename}" already exists in the institute registry (${score.toFixed(1)}% match). Open DDAS to review.`,
           });
-          setTimeout(() => {
-            if (pendingDecisions.has(item.id)) {
-              const p = pendingDecisions.get(item.id);
-              if (p?.fingerprint) {
-                saveLocalRecord(p.fingerprint).catch(() => {});
-                registerDownloadOnServer(p.fingerprint, p.item?.filename, p.item?.url).catch(() => {});
-              }
-              suggest();
-            }
-          }, 25000);
         }
         return;
       }
@@ -263,50 +261,61 @@ async function registerDownloadOnServer(fingerprint, filename, url) {
 }
 
 /**
- * Runs Path A (Device check) and Path B (Registry check) in parallel/orchestration.
+ * Section 2: Path B (Central Registry API) is primary and authoritative.
+ * Path A (Local IndexedDB) is a fallback only when the registry is unreachable.
  */
 async function runDualPathCheck(fingerprint, filename, url) {
-  // ---- Path A: local on-device check. Always runs, zero network, no auth needed. ----
+  const { token } = await getAuth();
+  let serverResult = null;
+
+  // ---- 1. Primary: Central Registry API Check ----
+  if (token && navigator.onLine !== false) {
+    serverResult = await checkServer(fingerprint, filename, url, token).catch((err) => {
+      console.warn("[DDAS] Central registry check unreachable/error:", err.message);
+      return null;
+    });
+  }
+
+  if (serverResult && serverResult.status !== "error") {
+    return { ...serverResult, matchSource: "registry", fingerprint };
+  }
+
+  // ---- 2. Fallback Only: Local IndexedDB (When offline or server unreachable) ----
+  console.log("[DDAS] Central registry unavailable, checking local fallback store...");
   const localMatches = await findLocalDuplicates(fingerprint).catch((err) => {
-    console.warn("[DDAS] local search error:", err);
+    console.warn("[DDAS] Local fallback search error:", err);
     return [];
   });
 
-  let localResult = { status: "none", matchSource: "device" };
   if (localMatches.length > 0) {
     const top = localMatches[0];
-    localResult = {
+    return {
       status: top.isExact || top.relationshipType === "exact_duplicate" ? "exact_duplicate" : "similar",
-      matchSource: "device",
+      matchSource: "registry",
+      isFallback: true,
       similarityScore: top.similarityScore,
       relationshipType: top.relationshipType,
       isExact: Boolean(top.isExact),
       breakdown: top.breakdown,
       sampled: top.sampled,
       existing: {
-        title: top.record.fileName || top.record.filename || "Local file",
-        fileName: top.record.fileName || top.record.filename || "Local file",
+        title: top.record.fileName || top.record.filename || "Registry Dataset",
+        fileName: top.record.fileName || top.record.filename || "Registry Dataset",
         uploadedAt: new Date(top.record.downloadedAt || top.record.timestamp || Date.now()).toISOString(),
+        downloaderUsername: top.record.username || "Local User",
+        downloadLocation: "Institute Registry",
+        downloadedAt: new Date(top.record.downloadedAt || top.record.timestamp || Date.now()).toISOString(),
         periodStart: top.record.periodStart || null,
         periodEnd: top.record.periodEnd || null,
         spatialRegionName: top.record.spatialRegionName || null,
       },
+      fingerprint,
     };
   }
 
-  // ---- Path B: server/institute registry check (only if online and authenticated) ----
-  const { token } = await getAuth();
-  let serverResult = null;
-  if (token && navigator.onLine !== false) {
-    serverResult = await checkServer(fingerprint, filename, url, token).catch((err) => {
-      console.warn("[DDAS] server check failed, using local result only:", err.message);
-      return null;
-    });
-  }
-
-  const merged = mergeResults(localResult, serverResult);
-  return { ...merged, fingerprint };
+  return { status: "none", similarityScore: 0, matchSource: "registry", fingerprint };
 }
+
 
 
 async function handleCheckDownload(url, filename, precomputedFingerprint = null) {
@@ -440,12 +449,40 @@ async function ensureTabInjected(tabId) {
   }
 }
 
+function sendMessageToTab(tabId, message) {
+  return new Promise((resolve) => {
+    try {
+      chrome.tabs.sendMessage(tabId, message, (response) => {
+        if (chrome.runtime.lastError) {
+          resolve(null);
+        } else {
+          resolve(response);
+        }
+      });
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
 async function fetchFingerprintFromTab(item) {
   const tabId = item.tabId > 0 ? item.tabId : await getActiveTabId();
   if (!tabId) return null;
 
-  try {
-    const resp = await chrome.tabs.sendMessage(tabId, {
+  let resp = await sendMessageToTab(tabId, {
+    type: "FETCH_AND_FINGERPRINT_TAB",
+    url: item.url,
+    filename: item.filename,
+  });
+
+  if (resp && resp.ok && resp.data) {
+    return resp.data;
+  }
+
+  // If not injected or tab was refreshing, ensure scripts are injected and retry once
+  const injected = await ensureTabInjected(tabId);
+  if (injected) {
+    resp = await sendMessageToTab(tabId, {
       type: "FETCH_AND_FINGERPRINT_TAB",
       url: item.url,
       filename: item.filename,
@@ -453,24 +490,8 @@ async function fetchFingerprintFromTab(item) {
     if (resp && resp.ok && resp.data) {
       return resp.data;
     }
-  } catch (err) {
-    // If not injected or broken connection, inject scripts into tab and retry
-    try {
-      const injected = await ensureTabInjected(tabId);
-      if (injected) {
-        const resp = await chrome.tabs.sendMessage(tabId, {
-          type: "FETCH_AND_FINGERPRINT_TAB",
-          url: item.url,
-          filename: item.filename,
-        });
-        if (resp && resp.ok && resp.data) {
-          return resp.data;
-        }
-      }
-    } catch (retryErr) {
-      console.warn("[DDAS] Tab fingerprint retry failed:", retryErr.message);
-    }
   }
+
   return null;
 }
 
@@ -486,19 +507,14 @@ async function showAlertInTab(item, checkResult, fingerprint) {
     url: item.url,
   };
 
-  try {
-    const resp = await chrome.tabs.sendMessage(tabId, payload);
+  let resp = await sendMessageToTab(tabId, payload);
+  if (resp && resp.ok) return true;
+
+  const injected = await ensureTabInjected(tabId);
+  if (injected) {
+    resp = await sendMessageToTab(tabId, payload);
     if (resp && resp.ok) return true;
-  } catch (err) {
-    try {
-      const injected = await ensureTabInjected(tabId);
-      if (injected) {
-        const resp = await chrome.tabs.sendMessage(tabId, payload);
-        if (resp && resp.ok) return true;
-      }
-    } catch (retryErr) {
-      console.warn("[DDAS] Could not send alert to tab after injection:", retryErr.message);
-    }
   }
+
   return false;
 }

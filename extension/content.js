@@ -121,43 +121,49 @@ function showOverlay() {
     const existing = result.existing || {};
     const existingFileName = existing.fileName || existing.title || "Stored file";
     const breakdown = result.breakdown || {};
-    const isLocal = result.matchSource === "device";
     const relType = result.relationshipType || (isExact ? "exact_duplicate" : score >= 80.0 ? "near_duplicate" : "related");
-    const hasAccess = isLocal || existing.hasAccess !== false;
+    const hasAccess = existing.hasAccess !== false;
 
     const periodText = existing.periodStart && existing.periodEnd
       ? `${existing.periodStart} to ${existing.periodEnd}`
       : existing.periodStart || existing.periodEnd || "";
     const regionText = existing.spatialRegionName || "";
+    const downloader = existing.downloaderUsername || "User";
+    const location = existing.downloadLocation || (existing.ownerDepartment ? `${existing.ownerDepartment} / Central Registry` : "Institute Registry");
+    const timestamp = existing.downloadedAt || existing.uploadedAt ? new Date(existing.downloadedAt || existing.uploadedAt).toLocaleString() : "";
 
     body.innerHTML = `
       <div class="heading ${isExact ? "danger" : "warning"}">${title}</div>
       <p class="desc">
         ${
           isExact
-            ? isLocal
-              ? "An identical file (100% byte match) is already stored locally on your device."
-              : "An identical file (100% byte match) already exists in the institute registry."
-            : isLocal
-            ? `A file with ${score.toFixed(1)}% content similarity is already stored on your device.`
+            ? "An identical file (100% byte match) already exists in the institute registry."
             : `A dataset with ${score.toFixed(1)}% similarity already exists in the registry.`
         }
       </p>
       <div class="existing">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-          <span class="badge ${isLocal ? "badge-local" : hasAccess ? "badge-registry" : "badge-restricted"}">
-            ${isLocal ? "Found on this device" : hasAccess ? "Institute Registry" : "Restricted Registry"}
+          <span class="badge ${hasAccess ? "badge-registry" : "badge-restricted"}">
+            ${hasAccess ? "Institute Registry" : "Restricted Registry"}
           </span>
           ${result.sampled ? `<span style="font-size:10px; color:#64748B;">(Sampled)</span>` : ""}
         </div>
         <div class="existing-title">${escapeHtml(existingFileName)}</div>
         <div class="existing-meta">
-          ${
-            isLocal
-              ? `<span>Saved: ${existing.uploadedAt ? new Date(existing.uploadedAt).toLocaleDateString() : "Previously"}</span>`
-              : `<span>${escapeHtml(existing.ownerDepartment || "Registry")}</span> · <span>${escapeHtml(existing.classification || "internal")}</span>`
-          }
+          <span>${escapeHtml(existing.ownerDepartment || "Registry")}</span> · <span>${escapeHtml(existing.classification || "internal")}</span>
         </div>
+
+        ${
+          hasAccess
+            ? `
+            <div style="margin-top:8px; padding:8px 10px; background:#131E33; border:1px solid #1B2A45; border-radius:3px; font-size:11px; color:#94A3B8; display:flex; flex-direction:column; gap:3px;">
+              <div>👤 Original Downloader: <strong style="color:#F5F7FA;">${escapeHtml(downloader)}</strong></div>
+              <div>📂 Download Location: <strong style="color:#38BDF8;">${escapeHtml(location)}</strong></div>
+              ${timestamp ? `<div>🕒 Downloaded At: <span style="font-family:'JetBrains Mono',monospace; color:#E2E8F0;">${escapeHtml(timestamp)}</span></div>` : ""}
+            </div>
+          `
+            : ""
+        }
 
         ${
           (periodText || regionText)
@@ -171,7 +177,7 @@ function showOverlay() {
         }
 
         ${
-          !isLocal && hasAccess && existing.locationUrl
+          hasAccess && existing.locationUrl
             ? `
             <div class="location-box">
               <span class="location-label">Access Location:</span>
@@ -180,7 +186,7 @@ function showOverlay() {
               </a>
             </div>
           `
-            : !isLocal && !hasAccess
+            : !hasAccess
             ? `
             <div class="restricted-box">
               🔒 <strong>Access Controlled (${escapeHtml(existing.classification || "Restricted")}):</strong>
@@ -191,11 +197,11 @@ function showOverlay() {
         }
       </div>
 
-      ${renderBreakdown(score, breakdown, relType, isLocal)}
+      ${renderBreakdown(score, breakdown, relType, false)}
 
       <div class="actions">
         <button class="btn-primary" id="ddas-use-existing">
-          ${isLocal ? "Keep existing file" : hasAccess ? "View / Use in Registry" : "Acknowledge & Cancel"}
+          ${hasAccess ? "View / Use in Registry" : "Acknowledge & Cancel"}
         </button>
         <button class="btn-secondary" id="ddas-continue">Continue download</button>
       </div>
@@ -204,7 +210,7 @@ function showOverlay() {
     const btnUse = shadow.getElementById("ddas-use-existing");
     if (btnUse) {
       btnUse.onclick = () => {
-        if (!isLocal && hasAccess && existing.locationUrl) {
+        if (hasAccess && existing.locationUrl) {
           window.open(existing.locationUrl, "_blank");
         }
         onUseExisting();
@@ -214,6 +220,7 @@ function showOverlay() {
     if (btnCont) {
       btnCont.onclick = () => onContinue();
     }
+
   }
 
   return { host, close, showAlert };

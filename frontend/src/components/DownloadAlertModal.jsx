@@ -36,6 +36,21 @@ export default function DownloadAlertModal({ relationship, onUseExisting, onCont
           relationshipType={relationship.relationship_type}
         />
 
+        {hasAccess && (relationship?.existing?.downloaderUsername || relationship?.existing?.downloadLocation) && (
+          <div className="bg-surface-50 border border-ink-200 rounded-sm p-3 mt-4 text-xs text-ink-700 space-y-1">
+            {relationship.existing.downloaderUsername && (
+              <div>👤 Downloader: <strong>{relationship.existing.downloaderUsername}</strong></div>
+            )}
+            {relationship.existing.downloadLocation && (
+              <div>📂 Storage Location: <span className="font-mono text-ink-900">{relationship.existing.downloadLocation}</span></div>
+            )}
+            {relationship.existing.downloadedAt && (
+              <div>🕒 Downloaded At: <span className="font-mono text-ink-600">{new Date(relationship.existing.downloadedAt).toLocaleString()}</span></div>
+            )}
+          </div>
+        )}
+
+
         {!hasAccess && (
           <div className="mt-4 p-3 bg-deny-500/10 border border-deny-500/30 rounded-sm text-xs text-deny-600">
             🔒 <strong>Access Controlled:</strong> Classification is restricted. Contact the data custodian department to request official access.

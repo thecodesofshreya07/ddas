@@ -1,0 +1,47 @@
+[
+  {
+    "id": "u-admin-001",
+    "username": "admin",
+    "email": "admin@ddas.gov.in",
+    "passwordHash": "$2a$10$InXZWFrrNwZgcJnEU6VFkuIZZ/TjOnBu3qYbytpIo7wRPT8jxd5De",
+    "department": "IT",
+    "role": "admin",
+    "createdAt": "2026-08-17T20:39:24.105Z"
+  },
+  {
+    "id": "u-rahul-002",
+    "username": "rahul",
+    "email": "rahul@meteorology.gov.in",
+    "passwordHash": "$2a$10$0GCDuqApS4sVoN.d2T74GOEAKv1aHEL2OycMbqj98aGZb4h83dETO",
+    "department": "Meteorology",
+    "role": "user",
+    "createdAt": "2026-08-17T20:39:24.105Z"
+  },
+  {
+    "id": "u-aditi-003",
+    "username": "aditi",
+    "email": "aditi@research.gov.in",
+    "passwordHash": "$2a$10$0GCDuqApS4sVoN.d2T74GOEAKv1aHEL2OycMbqj98aGZb4h83dETO",
+    "department": "Research",
+    "role": "user",
+    "createdAt": "2026-08-17T20:39:24.105Z"
+  },
+  {
+    "id": "u-kavita-004",
+    "username": "kavita",
+    "email": "kavita@research.gov.in",
+    "passwordHash": "$2a$10$0GCDuqApS4sVoN.d2T74GOEAKv1aHEL2OycMbqj98aGZb4h83dETO",
+    "department": "Research",
+    "role": "department_admin",
+    "createdAt": "2026-08-17T20:39:24.105Z"
+  },
+  {
+    "id": "u-1786999164226-558",
+    "username": "user_1786999163756",
+    "email": "user_1786999163756@ddas.gov.in",
+    "passwordHash": "$2a$10$a0E9iHPLyyi9bKDEIVCyteyXc11Yp7bwuaHU59i6K971Zp6vH1wu6",
+    "department": "Geospatial Intelligence",
+    "role": "user",
+    "createdAt": "2026-08-17T20:39:24.226Z"
+  }
+]
