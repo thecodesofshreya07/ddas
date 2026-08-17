@@ -128,9 +128,10 @@ chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
 
       // Step 2: Run Path A (Local On-Device Check) & Path B (Server Check)
       const merged = await runDualPathCheck(fingerprint, item.filename, item.url);
+      const score = Number(merged.similarityScore) || 0;
 
-      // Step 3: If duplicate or near-duplicate found, alert user!
-      if (merged.status === "exact_duplicate" || merged.status === "similar") {
+      // Step 3: If duplicate or near-duplicate found (score >= 60.0), alert user!
+      if (score >= 60.0 && (merged.status === "exact_duplicate" || merged.status === "similar" || merged.status === "related")) {
         pendingDecisions.set(item.id, { suggest, item, fingerprint });
 
         const shownInTab = await showAlertInTab(item, merged, fingerprint);
@@ -140,7 +141,7 @@ chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
             type: "basic",
             iconUrl: "icons/icon-128.png",
             title: merged.status === "exact_duplicate" ? "DDAS: Duplicate Download Detected" : "DDAS: Near-Duplicate Dataset Found",
-            message: `"${item.filename}" is already ${merged.matchSource === "device" ? "on this device" : "in the institute registry"}.`,
+            message: `"${item.filename}" is already ${merged.matchSource === "device" ? "on this device" : "in the institute registry"} (${score.toFixed(1)}% match).`,
           });
           setTimeout(() => {
             if (pendingDecisions.has(item.id)) {
@@ -154,7 +155,7 @@ chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
         return;
       }
 
-      // If no duplicate found, record locally and allow download immediately
+      // If no duplicate found or below threshold, record locally and allow download immediately
       saveLocalRecord(fingerprint).catch(() => {});
       suggest();
     } catch (err) {
@@ -185,7 +186,8 @@ async function runDualPathCheck(fingerprint, filename, url) {
       sampled: top.sampled,
       existing: {
         title: top.record.fileName || top.record.filename || "Local file",
-        uploadedAt: new Date(top.record.downloadedAt || top.record.timestamp).toISOString(),
+        fileName: top.record.fileName || top.record.filename || "Local file",
+        uploadedAt: new Date(top.record.downloadedAt || top.record.timestamp || Date.now()).toISOString(),
       },
     };
   }
@@ -263,11 +265,11 @@ async function checkServer(fingerprint, filename, url, token) {
 
 function mergeResults(local, server) {
   if (local.status === "exact_duplicate") return local;
-  if (!server || server.status === "none") return local;
+  if (!server || server.status === "none" || !server.similarityScore || server.similarityScore < 60.0) return local;
   if (local.status === "none") return server;
 
-  const localScore = local.similarityScore ?? 0;
-  const serverScore = server.similarityScore ?? 0;
+  const localScore = Number(local.similarityScore) || 0;
+  const serverScore = Number(server.similarityScore) || 0;
   return serverScore >= localScore ? server : local;
 }
 

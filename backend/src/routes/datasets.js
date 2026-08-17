@@ -4,9 +4,8 @@ const { requireAuth } = require("../middleware/auth");
 const { enforce } = require("../middleware/policy");
 const { searchDatasets } = require("../services/search");
 const { getObject, deleteObject } = require("../services/storage");
-const { decryptBuffer } = require("../services/crypto");
 const { recordEvent } = require("../services/auditLog");
-const { findExactDuplicate, findBestMatch } = require("../services/duplicateEngine");
+const { findExactDuplicate, findBestMatch, filenameSimilarity } = require("../services/duplicateEngine");
 
 const router = express.Router();
 
@@ -370,6 +369,9 @@ router.post("/check", requireAuth, async (req, res) => {
 
   const exactMatch = await findExactDuplicate(sha256);
   if (exactMatch) {
+    const originalStoredName = exactMatch.original_filename || exactMatch.title || "Stored dataset";
+    const metaSim = filenameSimilarity(filename || title || "", originalStoredName);
+
     await recordEvent({
       event_type: "EXTENSION_DUPLICATE_DETECTED",
       actor_id: req.user.id,
@@ -379,10 +381,14 @@ router.post("/check", requireAuth, async (req, res) => {
     });
     return res.json({
       status: "exact_duplicate",
+      relationshipType: "exact_duplicate",
+      similarityScore: 100.0,
+      breakdown: { content: 100.0, schema: 100.0, metadata: metaSim },
       existing: {
         datasetId: exactMatch.dataset_id,
         datasetVersionId: exactMatch.id,
-        title: exactMatch.title,
+        title: originalStoredName,
+        fileName: originalStoredName,
         classification: exactMatch.classification,
         ownerDepartment: exactMatch.owner_department,
         uploadedAt: exactMatch.uploaded_at,
@@ -396,7 +402,7 @@ router.post("/check", requireAuth, async (req, res) => {
     title: title || filename,
     description: "",
     original_filename: filename,
-    schema_fingerprint: schemaFingerprint ? { ...schemaFingerprint, contentSignature } : null,
+    schema_fingerprint: schemaFingerprint ? { ...schemaFingerprint, contentSignature } : (contentSignature ? { contentSignature } : null),
     period_start: periodStart || null,
     period_end: periodEnd || null,
     spatial_min_lat: spatialMinLat ?? null,
@@ -407,7 +413,9 @@ router.post("/check", requireAuth, async (req, res) => {
 
   const match = await findBestMatch(candidateShape);
 
-  if (match) {
+  if (match && match.totalScore >= 60.0) {
+    const originalStoredName = match.candidate.original_filename || match.candidate.title || "Stored dataset";
+
     await recordEvent({
       event_type: "EXTENSION_DUPLICATE_DETECTED",
       actor_id: req.user.id,
@@ -421,15 +429,18 @@ router.post("/check", requireAuth, async (req, res) => {
       },
     });
     return res.json({
-      status: "similar",
+      status: match.totalScore >= 80.0 ? "similar" : "related",
       relationshipType: match.relationshipType,
       similarityScore: match.totalScore,
       breakdown: match.breakdown,
       existing: {
         datasetId: match.candidate.dataset_id,
-        title: match.candidate.title,
+        datasetVersionId: match.candidate.id,
+        title: originalStoredName,
+        fileName: originalStoredName,
         classification: match.candidate.classification,
         ownerDepartment: match.candidate.owner_department,
+        uploadedAt: match.candidate.uploaded_at,
       },
     });
   }

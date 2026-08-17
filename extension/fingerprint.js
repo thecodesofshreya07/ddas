@@ -205,6 +205,52 @@ async function fetchAndFingerprint(url, filename = "") {
 }
 
 /**
+ * Standard DP Levenshtein distance calculation.
+ */
+function levenshtein(s1, s2) {
+  const m = s1.length;
+  const n = s2.length;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (s1[i - 1] === s2[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1];
+      } else {
+        dp[i][j] = 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+      }
+    }
+  }
+  return dp[m][n];
+}
+
+/**
+ * Real Levenshtein-based filename similarity (0.0 - 100.0%).
+ * Accurately drops when filename is changed or renamed.
+ */
+function filenameSimilarity(nameA = "", nameB = "") {
+  const normalize = (s) => (s || "")
+    .toLowerCase()
+    .replace(/\.[a-z0-9]+$/, "")      // strip extension
+    .replace(/[_\-\s]+/g, " ")        // normalize separators
+    .trim();
+
+  const a = normalize(nameA);
+  const b = normalize(nameB);
+
+  if (a === b && a.length > 0) return 100.0;
+  if (a.length === 0 || b.length === 0) return 0.0;
+
+  const distance = levenshtein(a, b);
+  const maxLen = Math.max(a.length, b.length);
+  const sim = (1 - (distance / maxLen)) * 100;
+  return Math.round(Math.max(0, Math.min(100, sim)) * 10) / 10;
+}
+
+/**
  * Multiset-based content similarity: counts exact row/chunk hash matches.
  * Accurately returns 98.0% when 2 out of 100 rows change.
  */
@@ -238,17 +284,17 @@ function contentSimilarity(sigA, sigB) {
     }
   }
 
-  const maxLen = Math.max(hashesA.length, hashesB.length);
-  const minLen = Math.min(hashesA.length, hashesB.length);
-  // Similarity against the larger version so row modifications & additions reduce score
-  const score = maxLen > 0 ? (matched / maxLen) * 100 : 0;
+  const smallerLen = Math.min(hashesA.length, hashesB.length);
+  const largerLen = Math.max(hashesA.length, hashesB.length);
+  // Containment formula against smaller set
+  const score = smallerLen > 0 ? (matched / smallerLen) * 100 : 0;
   const sampled = Boolean(sigA.sampled || sigB.sampled);
 
   return {
-    score: Math.round(score * 100) / 100,
+    score: Math.round(score * 10) / 10,
     matchedUnits: matched,
-    totalUnitsSmaller: minLen,
-    totalUnitsLarger: maxLen,
+    totalUnitsSmaller: smallerLen,
+    totalUnitsLarger: largerLen,
     sampled,
   };
 }
@@ -265,30 +311,18 @@ function compareSchema(schemaA, schemaB) {
   if (union.size === 0) return 0;
 
   const colOverlap = (intersection.length / union.size) * 100;
-  return Math.round(colOverlap * 100) / 100;
-}
-
-/**
- * Simple title / filename similarity
- */
-function compareNames(nameA = "", nameB = "") {
-  const normA = nameA.toLowerCase().replace(/[^a-z0-9]/g, " ").trim();
-  const normB = nameB.toLowerCase().replace(/[^a-z0-9]/g, " ").trim();
-  if (!normA || !normB) return 0;
-  if (normA === normB) return 100;
-
-  const tokensA = new Set(normA.split(/\s+/).filter(Boolean));
-  const tokensB = new Set(normB.split(/\s+/).filter(Boolean));
-  const common = [...tokensA].filter((t) => tokensB.has(t));
-  const union = new Set([...tokensA, ...tokensB]);
-  return union.size > 0 ? Math.round((common.length / union.size) * 100 * 100) / 100 : 0;
+  return Math.round(colOverlap * 10) / 10;
 }
 
 /**
  * Blended scoring function.
- * If content is modified (< 100%), score strictly reflects the modification and NEVER returns 100%.
+ * Returns real computed float percentages for every signal.
  */
 function scoreCandidate(newFingerprint, candidate) {
+  const nameNew = newFingerprint.fileName || newFingerprint.filename || "";
+  const nameCand = candidate.fileName || candidate.filename || candidate.title || candidate.original_filename || "";
+  const metadataScore = filenameSimilarity(nameNew, nameCand);
+
   const isExactByteMatch = Boolean(
     newFingerprint.sha256 &&
     candidate.sha256 &&
@@ -297,12 +331,12 @@ function scoreCandidate(newFingerprint, candidate) {
 
   if (isExactByteMatch) {
     return {
-      similarityScore: 100,
-      contentScore: 100,
-      schemaScore: 100,
-      metadataScore: 100,
+      similarityScore: 100.0,
+      contentScore: 100.0,
+      schemaScore: 100.0,
+      metadataScore,
       isExact: true,
-      breakdown: { content: 100, schema: 100, metadata: 100 },
+      breakdown: { content: 100.0, schema: 100.0, metadata: metadataScore },
       sampled: false,
     };
   }
@@ -316,10 +350,6 @@ function scoreCandidate(newFingerprint, candidate) {
   const schemaCand = candidate.structuralFingerprint || candidate.schemaFingerprint;
   const schemaScore = compareSchema(schemaNew, schemaCand);
 
-  const nameNew = newFingerprint.fileName || newFingerprint.filename || "";
-  const nameCand = candidate.fileName || candidate.filename || candidate.title || "";
-  const metadataScore = compareNames(nameNew, nameCand);
-
   const hasContentSig = Boolean(
     (sigNew?.hashes?.length || sigNew?.rowHashes?.length) &&
     (sigCand?.hashes?.length || sigCand?.rowHashes?.length)
@@ -327,24 +357,20 @@ function scoreCandidate(newFingerprint, candidate) {
 
   let finalScore = 0;
   if (hasContentSig) {
-    // When content signature is present, content is the primary source of truth (70% content)
-    finalScore = (contentScore * 0.70) + (schemaScore * 0.20) + (metadataScore * 0.10);
-    // If content has differences, the total score must never be rounded up to 100%
-    if (contentScore < 100 && finalScore >= 99.5) {
-      finalScore = Math.min(finalScore, contentScore);
-    }
+    // 60% content, 25% schema, 15% filename
+    finalScore = (contentScore * 0.60) + (schemaScore * 0.25) + (metadataScore * 0.15);
   } else if (schemaScore > 0) {
-    finalScore = (schemaScore * 0.80) + (metadataScore * 0.20);
+    finalScore = (schemaScore * 0.70) + (metadataScore * 0.30);
   } else {
     finalScore = metadataScore;
   }
 
-  // Cap at 99.9% if not byte-identical
-  if (!isExactByteMatch && finalScore >= 100) {
+  // Cap at 99.0% if not exact byte match
+  if (finalScore >= 100.0) {
     finalScore = 99.0;
   }
 
-  const rounded = Math.round(finalScore * 100) / 100;
+  const rounded = Math.round(finalScore * 10) / 10;
   return {
     similarityScore: rounded,
     contentScore,

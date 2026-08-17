@@ -142,18 +142,22 @@ async function getLocalCandidates(sizeBytes, mimeType = "") {
 async function findLocalDuplicates(newFingerprint) {
   if (!newFingerprint) return [];
 
-  // Exact match check first
+  // Exact match check first (SHA-256 byte match)
   if (newFingerprint.sha256) {
     const exact = await findLocalExact(newFingerprint.sha256);
     if (exact) {
+      const nameNew = newFingerprint.fileName || newFingerprint.filename || "";
+      const nameExact = exact.fileName || exact.filename || "";
+      const metaSim = filenameSimilarity(nameNew, nameExact);
+
       return [
         {
           record: exact,
-          similarityScore: 100,
+          similarityScore: 100.0,
           relationshipType: "exact_duplicate",
           matchType: "exact_duplicate",
           isExact: true,
-          breakdown: { content: 100, schema: 100, metadata: 100 },
+          breakdown: { content: 100.0, schema: 100.0, metadata: metaSim },
           matchSource: "device",
           sampled: false,
         },
@@ -168,17 +172,13 @@ async function findLocalDuplicates(newFingerprint) {
     if (candidate.sha256 === newFingerprint.sha256) continue;
     const scoreResult = scoreCandidate(newFingerprint, candidate);
 
-    // Floor of 30% relevance to qualify as a candidate match
-    if (scoreResult.similarityScore >= 30) {
-      let relType = "distinct";
-      if (scoreResult.isExact || (scoreResult.similarityScore === 100 && candidate.sha256 === newFingerprint.sha256)) {
+    // Floor of 60.0% relevance to qualify as a duplicate/near-duplicate alert
+    if (scoreResult.similarityScore >= 60.0) {
+      let relType = "related";
+      if (scoreResult.isExact || (scoreResult.similarityScore >= 100.0 && candidate.sha256 === newFingerprint.sha256)) {
         relType = "exact_duplicate";
-      } else if (scoreResult.similarityScore >= 85) {
+      } else if (scoreResult.similarityScore >= 80.0) {
         relType = "near_duplicate";
-      } else if (scoreResult.similarityScore >= 60) {
-        relType = "related";
-      } else {
-        relType = "possible_match";
       }
 
       scored.push({

@@ -127,9 +127,9 @@ function contentSimilarity(sigA, sigB) {
     }
   }
 
-  const maxLen = Math.max(hashesA.length, hashesB.length);
-  const score = maxLen > 0 ? (matched / maxLen) * 100 : 0;
-  return Math.round(score * 100) / 100;
+  const smallerLen = Math.min(hashesA.length, hashesB.length);
+  const score = smallerLen > 0 ? (matched / smallerLen) * 100 : 0;
+  return Math.round(score * 10) / 10;
 }
 
 function parseCsv(buffer) {

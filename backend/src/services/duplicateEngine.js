@@ -78,28 +78,67 @@ function spatialOverlapScore(a, b) {
   return Math.round((overlapArea / smallerArea) * 100 * 100) / 100;
 }
 
+function levenshtein(s1, s2) {
+  const m = s1.length;
+  const n = s2.length;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (s1[i - 1] === s2[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1];
+      } else {
+        dp[i][j] = 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+      }
+    }
+  }
+  return dp[m][n];
+}
+
+function filenameSimilarity(nameA = "", nameB = "") {
+  const normalize = (s) => (s || "")
+    .toLowerCase()
+    .replace(/\.[a-z0-9]+$/, "")      // strip extension
+    .replace(/[_\-\s]+/g, " ")        // normalize separators
+    .trim();
+
+  const a = normalize(nameA);
+  const b = normalize(nameB);
+
+  if (a === b && a.length > 0) return 100.0;
+  if (a.length === 0 || b.length === 0) return 0.0;
+
+  const distance = levenshtein(a, b);
+  const maxLen = Math.max(a.length, b.length);
+  const sim = (1 - (distance / maxLen)) * 100;
+  return Math.round(Math.max(0, Math.min(100, sim)) * 10) / 10;
+}
+
 function metadataSimilarityScore(a, b) {
-  // Simple filename/title fuzzy overlap using normalized token sets —
-  // deliberately cheap; the real work happens in textSimilarityScore.
-  return textSimilarityScore(a.original_filename || a.title, b.original_filename || b.title);
+  const nameA = a.original_filename || a.title || a.filename || "";
+  const nameB = b.original_filename || b.title || b.filename || "";
+  return filenameSimilarity(nameA, nameB);
 }
 
 /**
  * STAGE 3 — Explainable weighted similarity score.
- * Weights are configurable; defaults below match the blueprint's suggested
- * split (content/schema-heavy, since that's the most reliable signal for
- * structured government/research datasets).
+ * Weights: 60% content, 25% schema, 15% metadata
  */
 const DEFAULT_WEIGHTS = {
-  content: 0.65,
-  schema: 0.20,
-  metadata: 0.10,
-  temporal: 0.02,
-  spatial: 0.01,
-  semantic: 0.02,
+  content: 0.60,
+  schema: 0.25,
+  metadata: 0.15,
+  temporal: 0.00,
+  spatial: 0.00,
+  semantic: 0.00,
 };
 
 function scoreCandidate(newVersion, candidate, weights = DEFAULT_WEIGHTS) {
+  const metadata = metadataSimilarityScore(newVersion, candidate);
+
   const isExactByteMatch = Boolean(
     newVersion.sha256 &&
     candidate.sha256 &&
@@ -108,8 +147,8 @@ function scoreCandidate(newVersion, candidate, weights = DEFAULT_WEIGHTS) {
 
   if (isExactByteMatch) {
     return {
-      totalScore: 100,
-      breakdown: { content: 100, schema: 100, metadata: 100, temporal: 100, spatial: 100, semantic: 100 },
+      totalScore: 100.0,
+      breakdown: { content: 100.0, schema: 100.0, metadata, temporal: 100.0, spatial: 100.0, semantic: 100.0 },
       isExact: true,
     };
   }
@@ -123,7 +162,6 @@ function scoreCandidate(newVersion, candidate, weights = DEFAULT_WEIGHTS) {
     newVersion.schema_fingerprint,
     candidate.schema_fingerprint
   );
-  const metadata = metadataSimilarityScore(newVersion, candidate);
   const temporal = periodOverlapScore(
     newVersion.period_start,
     newVersion.period_end,
@@ -147,10 +185,6 @@ function scoreCandidate(newVersion, candidate, weights = DEFAULT_WEIGHTS) {
       temporal * weights.temporal +
       spatial * weights.spatial +
       semantic * weights.semantic;
-
-    if (content < 100 && total >= 99.5) {
-      total = Math.min(total, content);
-    }
   } else {
     const remainingWeight = weights.schema + weights.metadata + weights.temporal + weights.spatial + weights.semantic;
     total =
@@ -161,11 +195,11 @@ function scoreCandidate(newVersion, candidate, weights = DEFAULT_WEIGHTS) {
         semantic * weights.semantic) / (remainingWeight || 1);
   }
 
-  if (!isExactByteMatch && total >= 100) {
+  if (!isExactByteMatch && total >= 100.0) {
     total = 99.0;
   }
 
-  return { totalScore: Math.round(total * 100) / 100, breakdown, isExact: false };
+  return { totalScore: Math.round(total * 10) / 10, breakdown, isExact: false };
 }
 
 /**
@@ -180,12 +214,12 @@ function classifyRelationship(newVersion, candidate, totalScore, isExact = false
   const newRows = newVersion.schema_fingerprint?.rowCount || 0;
   const candRows = candidate.schema_fingerprint?.rowCount || 0;
 
-  if (totalScore >= 85) {
+  if (totalScore >= 80.0) {
     if (newRows > candRows * 1.2) return "superset";
     if (newRows < candRows * 0.8) return "subset";
     return "near_duplicate";
   }
-  if (totalScore >= 60) return "related";
+  if (totalScore >= 60.0) return "related";
   return "distinct";
 }
 
@@ -223,5 +257,6 @@ module.exports = {
   scoreCandidate,
   classifyRelationship,
   findBestMatch,
+  filenameSimilarity,
   DEFAULT_WEIGHTS,
 };

@@ -93,12 +93,25 @@ function showOverlay() {
   }
 
   function showAlert(result, { onUseExisting, onContinue }) {
-    const score = Number(result.similarityScore ?? 0);
-    const isExact = Boolean((result.status === "exact_duplicate" || result.isExact) && score >= 100);
-    const title = isExact ? "Exact duplicate found" : "Near-duplicate dataset found";
+    const score = Number(result.similarityScore);
+    if (isNaN(score) || score < 60.0) {
+      // Safety guard: never show modal for sub-threshold or invalid scores
+      onContinue();
+      return;
+    }
+
+    const isExact = Boolean((result.status === "exact_duplicate" || result.isExact) && score >= 100.0);
+    const title = isExact
+      ? "Exact duplicate found"
+      : score >= 80.0
+      ? "Near-duplicate dataset found"
+      : "Related dataset found";
+
     const existing = result.existing || {};
+    const existingFileName = existing.fileName || existing.title || "Stored file";
     const breakdown = result.breakdown || {};
     const isLocal = result.matchSource === "device";
+    const relType = result.relationshipType || (isExact ? "exact_duplicate" : score >= 80.0 ? "near_duplicate" : "related");
 
     body.innerHTML = `
       <div class="heading ${isExact ? "danger" : "warning"}">${title}</div>
@@ -120,16 +133,16 @@ function showOverlay() {
           </span>
           ${result.sampled ? `<span style="font-size:10px; color:#64748B;">(Sampled)</span>` : ""}
         </div>
-        <div class="existing-title">${escapeHtml(existing.title || "Untitled dataset")}</div>
+        <div class="existing-title">${escapeHtml(existingFileName)}</div>
         <div class="existing-meta">
           ${
             isLocal
               ? `<span>Saved: ${existing.uploadedAt ? new Date(existing.uploadedAt).toLocaleString() : "Previously"}</span>`
-              : `<span>${escapeHtml(existing.ownerDepartment || "Cross-department")}</span> · <span>${escapeHtml(existing.classification || "internal")}</span>`
+              : `<span>${escapeHtml(existing.ownerDepartment || "Registry")}</span> · <span>${escapeHtml(existing.classification || "internal")}</span>`
           }
         </div>
       </div>
-      ${renderBreakdown(score, breakdown, result.relationshipType || (isExact ? "exact_duplicate" : "near_duplicate"), isLocal)}
+      ${renderBreakdown(score, breakdown, relType, isLocal)}
       <div class="actions">
         <button class="btn-primary" id="ddas-use-existing">${isLocal ? "Keep existing file" : "Use existing dataset"}</button>
         <button class="btn-secondary" id="ddas-continue">Continue download</button>
@@ -170,7 +183,7 @@ function renderBreakdown(score, breakdown, relationshipType, isLocal) {
     <div class="score-block">
       <div class="score-row">
         <span class="score-label">Match confidence</span>
-        <span class="score-value">${score !== undefined ? Number(score).toFixed(1) : "100.0"}%</span>
+        <span class="score-value">${score.toFixed(1)}%</span>
       </div>
       ${relationshipType ? `<div class="badge">${escapeHtml(relationshipType.replace(/_/g, " "))}</div>` : ""}
       ${rows ? `<table class="breakdown-table">${rows}</table>` : ""}
