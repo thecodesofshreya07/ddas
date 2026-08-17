@@ -1,5 +1,4 @@
 const content = document.getElementById("content");
-const fileInput = document.getElementById("local-file-input");
 
 let feedbackBanner = "";
 
@@ -24,18 +23,16 @@ async function renderLogin(error) {
     <input id="password" type="password" placeholder="••••••••" value="admin123" />
     <button class="btn-primary" id="login-btn">Sign in</button>
 
-    <div class="stats-badge">
-      <span>Tracked on this device</span>
-      <span class="stats-count">${records.length} files</span>
+    <div class="stats-badge" style="margin-top: 12px;">
+      <span>Protected downloads</span>
+      <span class="stats-count">${records.length} tracked</span>
     </div>
 
-    <button class="btn-accent" id="index-local-btn">📁 Index a local file</button>
-    <button class="btn-secondary" id="clear-cache-btn">Clear Device Cache</button>
-    <button class="btn-secondary" id="settings-btn">API & Directory Settings</button>
+    <button class="btn-secondary" id="clear-cache-btn">Clear Local Cache</button>
+    <button class="btn-secondary" id="settings-btn">Extension Settings</button>
   `;
 
   document.getElementById("login-btn").onclick = handleLogin;
-  document.getElementById("index-local-btn").onclick = () => fileInput.click();
   document.getElementById("clear-cache-btn").onclick = handleClearCache;
   document.getElementById("settings-btn").onclick = () => chrome.runtime.openOptionsPage();
 }
@@ -48,30 +45,28 @@ async function renderSignedIn(user) {
     ${feedbackBanner ? `<div class="success-banner">${feedbackBanner}</div>` : ""}
     <div class="user-row">
       <div>
-        <div class="user-name">${user.name}</div>
-        <div class="user-meta">${user.department} · ${user.role}</div>
+        <div class="user-name">${escapeHtml(user.name)}</div>
+        <div class="user-meta">${escapeHtml(user.department)} · ${escapeHtml(user.role)}</div>
       </div>
     </div>
     <div class="toggle-row">
-      <span class="toggle-label">Check downloads automatically</span>
+      <span class="toggle-label">Automatic download check</span>
       <input type="checkbox" id="toggle" ${enabled ? "checked" : ""} />
     </div>
 
     <div class="stats-badge">
-      <span>Tracked local datasets</span>
+      <span>Tracked on this device</span>
       <span class="stats-count">${records.length} files</span>
     </div>
 
-    <button class="btn-accent" id="index-local-btn">📁 Index a local file</button>
-    <button class="btn-secondary" id="refresh-index-btn">🔄 Refresh tracked index</button>
+    <button class="btn-primary" id="open-portal-btn">🌐 Open Institute Registry</button>
     <button class="btn-secondary" id="clear-cache-btn">Clear Device Cache</button>
     <button class="btn-secondary" id="signout-btn">Sign out</button>
-    <a href="#" id="settings-link" class="footer-link">Advanced & Directory Settings</a>
+    <a href="#" id="settings-link" class="footer-link">Extension Settings</a>
   `;
 
   document.getElementById("toggle").onchange = (e) => setInterceptionEnabled(e.target.checked);
-  document.getElementById("index-local-btn").onclick = () => fileInput.click();
-  document.getElementById("refresh-index-btn").onclick = handleRefreshIndex;
+  document.getElementById("open-portal-btn").onclick = () => chrome.tabs.create({ url: "http://localhost:5173" });
   document.getElementById("clear-cache-btn").onclick = handleClearCache;
   document.getElementById("signout-btn").onclick = async () => {
     await clearAuth();
@@ -102,7 +97,7 @@ async function handleLogin() {
     await setAuth(data.token, data.user);
     await render();
   } catch (err) {
-    renderLogin(`Couldn't reach ${apiBase} — check API settings.`);
+    renderLogin(`Couldn't reach ${apiBase} — verify DDAS backend is running.`);
   }
 }
 
@@ -119,59 +114,6 @@ async function handleClearCache() {
   });
 }
 
-// Option A: Manual file picker indexing
-fileInput.onchange = async (e) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
-
-  try {
-    const fingerprint = await fingerprintLocalFile(file, {
-      isManualIndex: true,
-      downloadPath: file.name,
-    });
-
-    await saveLocalRecord(fingerprint);
-
-    const rowCount = fingerprint.structuralFingerprint?.rowCount;
-    const sizeKb = (fingerprint.sizeBytes / 1024).toFixed(1);
-    const rowInfo = rowCount !== undefined ? `${rowCount} rows, ` : "";
-
-    feedbackBanner = `✓ Indexed "<strong>${escapeHtml(file.name)}</strong>" (${rowInfo}${sizeKb} KB) into local registry.`;
-    fileInput.value = "";
-    await render();
-  } catch (err) {
-    feedbackBanner = `Failed to index file: ${err.message}`;
-    fileInput.value = "";
-    await render();
-  }
-};
-
-// Option B: Directory refresh
-async function handleRefreshIndex() {
-  const btn = document.getElementById("refresh-index-btn");
-  if (btn) btn.textContent = "Checking disk...";
-
-  const dirHandle = await getDirectoryHandle().catch(() => null);
-  if (!dirHandle) {
-    // If no directory granted yet, open options page to grant access
-    chrome.runtime.openOptionsPage();
-    return;
-  }
-
-  try {
-    const result = await refreshTrackedFilesFromDirectory(dirHandle);
-    feedbackBanner = `Index refreshed: ${result.updated} updated (${result.scanned} scanned).`;
-  } catch (err) {
-    feedbackBanner = `Refresh error: ${err.message}`;
-  }
-
-  await render();
-  setTimeout(() => {
-    feedbackBanner = "";
-    render();
-  }, 4000);
-}
-
 function escapeHtml(str) {
   const div = document.createElement("div");
   div.textContent = str ?? "";
@@ -179,4 +121,3 @@ function escapeHtml(str) {
 }
 
 render();
-
