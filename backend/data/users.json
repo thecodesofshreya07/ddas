@@ -133,5 +133,14 @@
     "department": "Agriculture",
     "role": "admin",
     "createdAt": "2026-08-18T02:55:57.766Z"
+  },
+  {
+    "id": "u-1787024949708-156",
+    "username": "tu@gmail.com",
+    "email": "tu@gmail.com@ddas.gov.in",
+    "passwordHash": "$2a$10$m9GfNgIwzrQ4yo3w7v370egfRJ8Jltluogndc5D2xXaMEE7IFoBWa",
+    "department": "GIS",
+    "role": "admin",
+    "createdAt": "2026-08-18T03:49:09.708Z"
   }
 ]
