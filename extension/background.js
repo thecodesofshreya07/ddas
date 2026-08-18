@@ -80,12 +80,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             // safely consume lastError
           }
         });
+        const versionId = pending.result?.existing?.datasetVersionId;
+        if (versionId) {
+          getAuth().then(async ({ token }) => {
+            if (token) {
+              const apiBase = await getApiBase();
+              fetch(`${apiBase}/api/datasets/versions/${versionId}/reuse`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+              }).catch(() => {});
+            }
+          }).catch(() => {});
+        }
       } else if (action === "continue") {
         console.log(`[DDAS Interceptor] User chose to continue download ${downloadId}`);
         allowedDownloadIds.add(downloadId);
         if (pending.fingerprint) {
           saveLocalRecord(pending.fingerprint).catch(() => {});
-          registerDownloadOnServer(pending.fingerprint, pending.item?.filename, pending.item?.url).catch(() => {});
+          registerDownloadOnServer(pending.fingerprint, pending.item?.filename, pending.item?.url, true).catch(() => {});
         }
         pending.suggest();
       }
@@ -234,7 +246,7 @@ chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
 /**
  * Auto-registers completed download on central institute server (Gap 1).
  */
-async function registerDownloadOnServer(fingerprint, filename, url) {
+async function registerDownloadOnServer(fingerprint, filename, url, wasAlerted = false) {
   try {
     const { token } = await getAuth();
     if (!token || navigator.onLine === false) return;
@@ -254,6 +266,8 @@ async function registerDownloadOnServer(fingerprint, filename, url) {
         periodStart: fingerprint.periodStart || null,
         periodEnd: fingerprint.periodEnd || null,
         spatialRegionName: fingerprint.spatialRegionName || null,
+        wasAlerted: Boolean(wasAlerted),
+        actionTaken: wasAlerted ? "continued_anyway" : "registered_external_download",
       }),
     });
   } catch (err) {

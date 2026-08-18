@@ -72,11 +72,152 @@ class LocalDatabase {
       { id: "p11", role: "department_admin", department: null, classification: "restricted", action: "view", effect: "allow" }
     );
 
-    // Empty initial dataset registry — starts completely fresh
-    this.datasets = [];
-    this.dataset_versions = [];
-    this.version_relationships = [];
-    this.alert_reviews = [];
+    // Seed initial dataset registry with realistic canonical records and duplicate relationship
+    const now = Date.now();
+    const ds1 = {
+      id: "ds-seed-001",
+      title: "IMD Gridded Precipitation & Rainfall 2024",
+      description: "Daily gridded rainfall datasets across meteorological subdivisions at 0.25-degree resolution.",
+      domain: "Meteorology",
+      owner_department: "Meteorology",
+      classification: "internal",
+      status: "active",
+      created_at: new Date(now - 3600000 * 48).toISOString(),
+      updated_at: new Date(now - 3600000 * 48).toISOString(),
+    };
+    const ds2 = {
+      id: "ds-seed-002",
+      title: "All-India Daily Surface Rainfall Observations 2024",
+      description: "Rain gauge station precipitation aggregated across national weather observatories.",
+      domain: "Meteorology",
+      owner_department: "Research",
+      classification: "internal",
+      status: "active",
+      created_at: new Date(now - 3600000 * 24).toISOString(),
+      updated_at: new Date(now - 3600000 * 24).toISOString(),
+    };
+    const ds3 = {
+      id: "ds-seed-003",
+      title: "Central Water Commission River Basin Hydrology 2023-24",
+      description: "Hydrological discharge, reservoir storage levels, and flood monitoring metrics across major river basins.",
+      domain: "Hydrology",
+      owner_department: "Water Resources",
+      classification: "internal",
+      status: "active",
+      created_at: new Date(now - 3600000 * 72).toISOString(),
+      updated_at: new Date(now - 3600000 * 72).toISOString(),
+    };
+    this.datasets.push(ds1, ds2, ds3);
+
+    const dv1 = {
+      id: "dv-seed-001",
+      dataset_id: "ds-seed-001",
+      version_num: 1,
+      original_filename: "imd_rainfall_2024_q1_q2.csv",
+      format: "csv",
+      size_bytes: 18450000,
+      sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      storage_key: "datasets/imd_rainfall_2024_q1_q2.csv",
+      period_start: "2024-01-01",
+      period_end: "2024-06-30",
+      spatial_region_name: "All India Subdivisions",
+      spatial_min_lat: 8.0,
+      spatial_max_lat: 37.0,
+      spatial_min_lng: 68.0,
+      spatial_max_lng: 97.0,
+      uploaded_by: "u-rahul-002",
+      uploaded_at: new Date(now - 3600000 * 48).toISOString(),
+      schema_fingerprint: { columns: ["date", "subdivision", "rainfall_mm", "temp_c", "station_id"], rowCount: 145000 },
+    };
+    const dv2 = {
+      id: "dv-seed-002",
+      dataset_id: "ds-seed-002",
+      version_num: 1,
+      original_filename: "daily_rainfall_stations_2024.csv",
+      format: "csv",
+      size_bytes: 17920000,
+      sha256: "a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e",
+      storage_key: "datasets/daily_rainfall_stations_2024.csv",
+      period_start: "2024-01-01",
+      period_end: "2024-06-30",
+      spatial_region_name: "All India Subdivisions",
+      spatial_min_lat: 8.0,
+      spatial_max_lat: 37.0,
+      spatial_min_lng: 68.0,
+      spatial_max_lng: 97.0,
+      uploaded_by: "u-aditi-003",
+      uploaded_at: new Date(now - 3600000 * 24).toISOString(),
+      schema_fingerprint: { columns: ["date", "subdivision", "rainfall_mm", "temp_c", "station_id"], rowCount: 141000 },
+    };
+    const dv3 = {
+      id: "dv-seed-003",
+      dataset_id: "ds-seed-003",
+      version_num: 1,
+      original_filename: "cwc_basin_discharge_2023_2024.csv",
+      format: "csv",
+      size_bytes: 24100000,
+      sha256: "b47c3f91048892bf3d9418659d4c798fc1c149afbf4c8996fb92427ae41e4649",
+      storage_key: "datasets/cwc_basin_discharge_2023_2024.csv",
+      period_start: "2023-04-01",
+      period_end: "2024-03-31",
+      spatial_region_name: "National River Basins",
+      spatial_min_lat: 8.0,
+      spatial_max_lat: 35.0,
+      spatial_min_lng: 69.0,
+      spatial_max_lng: 95.0,
+      uploaded_by: "u-admin-001",
+      uploaded_at: new Date(now - 3600000 * 72).toISOString(),
+      schema_fingerprint: { columns: ["basin_id", "basin_name", "discharge_cusecs", "water_level_m", "date"], rowCount: 210000 },
+    };
+    this.dataset_versions.push(dv1, dv2, dv3);
+
+    const vr1 = {
+      id: "vr-seed-001",
+      version_a_id: "dv-seed-002",
+      version_b_id: "dv-seed-001",
+      relationship_type: "duplicate",
+      similarity_score: 94.5,
+      score_breakdown: { content: 96.0, schema: 100.0, metadata: 87.5 },
+      content_diff: { commonRowCount: 141000, divergentRowCount: 4000 },
+      created_at: new Date(now - 3600000 * 12).toISOString(),
+    };
+    this.version_relationships.push(vr1);
+
+    const ar1 = {
+      id: "ar-seed-001",
+      relationship_id: "vr-seed-001",
+      status: "new",
+      assigned_to: null,
+      notes: "High similarity duplicate detected between All-India Surface Rainfall and IMD Gridded Rainfall.",
+      updated_at: new Date(now - 3600000 * 12).toISOString(),
+    };
+    this.alert_reviews.push(ar1);
+
+    const dl1 = {
+      id: "dl-seed-001",
+      dataset_version_id: "dv-seed-002",
+      user_id: "u-aditi-003",
+      was_alerted: true,
+      action_taken: "continued_anyway",
+      bytes_saved: 0,
+      username: "Aditi Sharma",
+      department: "Research",
+      download_location: "Research Department Registry",
+      downloaded_at: new Date(now - 3600000 * 6).toISOString(),
+    };
+    const dl2 = {
+      id: "dl-seed-002",
+      dataset_version_id: "dv-seed-001",
+      user_id: "u-rahul-002",
+      was_alerted: true,
+      action_taken: "used_existing",
+      bytes_saved: 18450000,
+      username: "Rahul Verma",
+      department: "Meteorology",
+      download_location: "Meteorology Department Registry",
+      downloaded_at: new Date(now - 3600000 * 18).toISOString(),
+    };
+    this.downloads.push(dl1, dl2);
 
     const genesisPrev = "0".repeat(64);
     const genesisPayload = {
@@ -232,6 +373,11 @@ class LocalDatabase {
         return { rows: filtered };
       }
 
+      if (upper.includes("WHERE (VR.SIMILARITY_SCORE >=") || upper.includes("SIMILARITY_SCORE >=")) {
+        const filtered = rows.filter((r) => parseFloat(r.similarity_score) >= 60 || r.relationship_type !== "distinct");
+        return { rows: filtered.slice(0, 10) };
+      }
+
       return { rows };
     }
 
@@ -305,10 +451,20 @@ class LocalDatabase {
     }
 
     if (upper.includes("FROM AUDIT_LOG")) {
-      const rows = this.audit_log.map((al) => {
+      let rows = this.audit_log.map((al) => {
         const actor = this.users.find((u) => u.id === al.actor_id) || {};
         return { ...al, actor_name: actor.name || "System" };
       });
+      if (upper.includes("WHERE AL.EVENT_TYPE =") || upper.includes("WHERE EVENT_TYPE =")) {
+        const matchType = upper.match(/EVENT_TYPE\s*=\s*'([^']+)'/);
+        const eventType = matchType ? matchType[1] : null;
+        if (eventType) {
+          rows = rows.filter((al) => al.event_type?.toUpperCase() === eventType);
+        }
+      }
+      if (upper.includes("COUNT(*)")) {
+        return { rows: [{ count: String(rows.length), total: String(rows.length) }] };
+      }
       if (upper.includes("ORDER BY ID ASC") || upper.includes("ORDER BY AL.ID ASC")) {
         return { rows: [...rows] };
       }
@@ -318,13 +474,27 @@ class LocalDatabase {
 
     // 6. Downloads
     if (upper.startsWith("SELECT") && upper.includes("FROM DOWNLOADS")) {
-      let filtered = [...this.downloads];
+      let filtered = this.downloads.map((dl) => {
+        const v = this.dataset_versions.find((dv) => dv.id === dl.dataset_version_id) || {};
+        const ds = this.datasets.find((d) => d.id === v.dataset_id) || {};
+        const u = this.users.find((user) => user.id === dl.user_id) || {};
+        return {
+          ...dl,
+          dataset_id: ds.id || v.dataset_id || null,
+          title: ds.title || v.original_filename || "Dataset",
+          user_name: u.name || dl.username || "User",
+        };
+      });
+
       if (upper.includes("WHERE DATASET_VERSION_ID =")) {
         const vid = params[0];
         filtered = filtered.filter((d) => d.dataset_version_id === vid);
       }
       if (upper.includes("WHERE ACTION_TAKEN = 'USED_EXISTING'")) {
         filtered = filtered.filter((d) => d.action_taken === "used_existing");
+      }
+      if (upper.includes("WAS_ALERTED = TRUE") || upper.includes("ACTION_TAKEN = 'CONTINUED_ANYWAY'")) {
+        filtered = filtered.filter((d) => d.was_alerted && d.action_taken === "continued_anyway");
       }
       if (upper.includes("SUM(BYTES_SAVED)")) {
         const total = filtered.reduce((acc, d) => acc + (Number(d.bytes_saved) || 0), 0);
