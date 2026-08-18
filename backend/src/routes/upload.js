@@ -183,8 +183,26 @@ router.post("/", requireAuth, uploadLimiter, upload.single("file"), async (req, 
 
     await client.query("COMMIT");
 
+    const { indexDataset } = require("../services/search");
+    await indexDataset({
+      dataset_id: datasetId,
+      title,
+      description: description || "",
+      domain: domain || "General",
+      owner_department: req.user.department || "General",
+      classification: classification || "internal",
+      spatial_region_name: spatial_region_name || null,
+      spatial_min_lat: spatial_min_lat || null,
+      spatial_max_lat: spatial_max_lat || null,
+      spatial_min_lng: spatial_min_lng || null,
+      spatial_max_lng: spatial_max_lng || null,
+      period_start: period_start || null,
+      period_end: period_end || null,
+      created_at: new Date().toISOString(),
+    }).catch(() => {});
+
     // Hand off the expensive part (structural fingerprint + similarity scan
-    // + search indexing) to the async worker — the API responds now.
+    // + search indexing update) to background job runner
     await enqueueFingerprintJob({ datasetVersionId: versionId, storageKey, format });
 
     res.status(201).json({

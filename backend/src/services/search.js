@@ -7,17 +7,17 @@ try {
   if (process.env.ELASTICSEARCH_URL) {
     client = new Client({
       node: process.env.ELASTICSEARCH_URL,
-      maxRetries: 0,
-      requestTimeout: 800,
+      maxRetries: 2,
+      requestTimeout: 4000,
       sniffOnStart: false,
     });
   }
-} catch {
+} catch (err) {
+  console.warn("[search] Elasticsearch client init failed, fallback enabled:", err.message);
   useLocalSearch = true;
 }
 
 const INDEX = process.env.ELASTICSEARCH_INDEX || "datasets";
-
 
 async function ensureIndex() {
   if (!client) {
@@ -46,9 +46,11 @@ async function ensureIndex() {
         },
       });
       console.log(`[search] created Elasticsearch index "${INDEX}"`);
+    } else {
+      console.log(`[search] connected to Elasticsearch (index "${INDEX}" ready)`);
     }
   } catch (err) {
-    console.warn("[search] Elasticsearch unavailable, using database search fallback");
+    console.warn(`[search] Elasticsearch not reachable (${err.message}), using database search fallback`);
     useLocalSearch = true;
   }
 }
@@ -75,22 +77,39 @@ function toEnvelope({ minLat, maxLat, minLng, maxLng }) {
 async function indexDataset(doc) {
   if (!useLocalSearch && client) {
     try {
+      const datasetId = doc.dataset_id || doc.datasetId || doc.id;
+      if (!datasetId) return;
+
       const spatialExtent = toEnvelope({
-        minLat: doc.spatial_min_lat,
-        maxLat: doc.spatial_max_lat,
-        minLng: doc.spatial_min_lng,
-        maxLng: doc.spatial_max_lng,
+        minLat: doc.spatial_min_lat ?? doc.spatialMinLat ?? null,
+        maxLat: doc.spatial_max_lat ?? doc.spatialMaxLat ?? null,
+        minLng: doc.spatial_min_lng ?? doc.spatialMinLng ?? null,
+        maxLng: doc.spatial_max_lng ?? doc.spatialMaxLng ?? null,
       });
+
+      const document = {
+        dataset_id: datasetId,
+        title: doc.title || "",
+        description: doc.description || "",
+        domain: doc.domain || "General",
+        owner_department: doc.owner_department || doc.ownerDepartment || "General",
+        classification: doc.classification || "internal",
+        spatial_region_name: doc.spatial_region_name || doc.spatialRegionName || null,
+        period_start: doc.period_start || doc.periodStart || null,
+        period_end: doc.period_end || doc.periodEnd || null,
+        created_at: doc.created_at || doc.createdAt || new Date().toISOString(),
+        spatial_extent: spatialExtent,
+      };
 
       await client.index({
         index: INDEX,
-        id: doc.dataset_id,
-        document: { ...doc, spatial_extent: spatialExtent },
+        id: datasetId,
+        document,
         refresh: "wait_for",
       });
       return;
     } catch (err) {
-      useLocalSearch = true;
+      console.warn("[search] Elasticsearch indexDataset error:", err.message);
     }
   }
 }

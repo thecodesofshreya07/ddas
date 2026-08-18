@@ -124,5 +124,14 @@
     "department": "Geospatial Intelligence",
     "role": "user",
     "createdAt": "2026-08-17T21:09:21.840Z"
+  },
+  {
+    "id": "u-1787021757766-516",
+    "username": "sm@gmail.com",
+    "email": "sm@gmail.com@ddas.gov.in",
+    "passwordHash": "$2a$10$eDfFBQPhi4VKIPCinLmHjuDGTc7EjV/R6tluwLXyCYpv1ley.11um",
+    "department": "Agriculture",
+    "role": "admin",
+    "createdAt": "2026-08-18T02:55:57.766Z"
   }
 ]

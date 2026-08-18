@@ -27,35 +27,29 @@ try {
   useLocalQueue = true;
 }
 
-/**
- * Enqueues a newly-uploaded file for async processing.
- * Falls back to in-process execution if Redis is not running.
- */
 async function enqueueFingerprintJob(payload) {
-  if (!useLocalQueue && fingerprintQueue) {
-    try {
-      return await fingerprintQueue.add("fingerprint-file", payload, {
-        attempts: 3,
-        backoff: { type: "exponential", delay: 2000 },
-        removeOnComplete: 100,
-        removeOnFail: false,
-      });
-    } catch {
-      useLocalQueue = true;
-    }
-  }
-
-  // Local in-memory asynchronous worker fallback
+  // Always trigger the background fingerprint job runner immediately
   setImmediate(async () => {
     try {
       const { processFingerprintJob } = require("./fingerprintJobRunner");
       await processFingerprintJob(payload);
     } catch (err) {
-      console.warn("[queue:local] error executing fingerprint job:", err.message);
+      console.warn("[queue] error executing fingerprint job:", err.message);
     }
   });
 
-  return { id: `local-${Date.now()}` };
+  if (!useLocalQueue && fingerprintQueue) {
+    try {
+      await fingerprintQueue.add("fingerprint-file", payload, {
+        attempts: 3,
+        backoff: { type: "exponential", delay: 2000 },
+        removeOnComplete: 100,
+        removeOnFail: false,
+      }).catch(() => {});
+    } catch {}
+  }
+
+  return { id: `job-${Date.now()}` };
 }
 
 module.exports = { connection, fingerprintQueue, enqueueFingerprintJob };

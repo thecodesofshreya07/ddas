@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -10,7 +8,7 @@ services:
       POSTGRES_PASSWORD: ddas_dev_password
       POSTGRES_DB: ddas
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./backend/src/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
@@ -75,12 +73,11 @@ services:
     restart: unless-stopped
     env_file:
       - ./backend/.env
-    # No fixed host port mapping here on purpose — it would collide when
-    # scaled (`--scale api=3` can't bind three containers to the same host
-    # port). The frontend reaches it over the internal Docker network via
-    # the "api" hostname; for the scaling demo, go through nginx on :8080
-    # instead. If you want ad-hoc host access to a single instance, add
-    # back `ports: ["4000:4000"]` — just remove it again before scaling.
+    environment:
+      - DATABASE_URL=postgres://ddas:ddas_dev_password@postgres:5432/ddas
+      - REDIS_URL=redis://redis:6379
+      - MINIO_ENDPOINT=minio
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
     depends_on:
       postgres:
         condition: service_healthy
@@ -101,6 +98,11 @@ services:
     command: ["node", "src/workers/fingerprintWorker.js"]
     env_file:
       - ./backend/.env
+    environment:
+      - DATABASE_URL=postgres://ddas:ddas_dev_password@postgres:5432/ddas
+      - REDIS_URL=redis://redis:6379
+      - MINIO_ENDPOINT=minio
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
     depends_on:
       postgres:
         condition: service_healthy

@@ -34,10 +34,12 @@ async function ensureBucket() {
       if (!exists) {
         await client.makeBucket(BUCKET);
         console.log(`[storage] created MinIO bucket "${BUCKET}"`);
+      } else {
+        console.log(`[storage] connected to MinIO (bucket "${BUCKET}" ready)`);
       }
       return;
     } catch (err) {
-      console.warn("[storage] MinIO unavailable, falling back to local storage directory:", LOCAL_STORAGE_DIR);
+      console.warn(`[storage] MinIO unavailable (${err.message}), using local storage directory:`, LOCAL_STORAGE_DIR);
       useLocal = true;
     }
   } else {
