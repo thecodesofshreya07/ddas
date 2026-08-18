@@ -421,18 +421,12 @@ function scoreCandidate(newFingerprint, candidate) {
   if (hasContentSig) {
     // 60% content, 25% schema, 15% filename
     finalScore = (contentScore * 0.60) + (schemaScore * 0.25) + (metadataScore * 0.15);
-  } else if (schemaScore > 0) {
-    finalScore = (schemaScore * 0.70) + (metadataScore * 0.30);
   } else {
-    finalScore = metadataScore;
+    // Content unverified: weight schema and metadata without inflating
+    finalScore = (schemaScore * 0.25) + (metadataScore * 0.15);
   }
 
-  // Cap at 99.0% if not exact byte match
-  if (finalScore >= 100.0) {
-    finalScore = 99.0;
-  }
-
-  const rounded = Math.round(finalScore * 10) / 10;
+  const rounded = Math.round(Math.min(99.9, Math.max(0.0, finalScore)) * 10) / 10;
   return {
     similarityScore: rounded,
     contentScore,

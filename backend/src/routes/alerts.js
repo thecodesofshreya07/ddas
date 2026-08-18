@@ -93,8 +93,14 @@ router.get("/:relationshipId", requireAuth, async (req, res) => {
     `SELECT vr.*,
             dva.id AS version_a_id, dva.original_filename AS a_filename, dva.uploaded_at AS a_uploaded_at,
             dva.dataset_id AS a_dataset_id, da.title AS a_title, da.owner_department AS a_department, da.classification AS a_classification,
+            da.domain AS a_domain, dva.format AS a_format, dva.size_bytes AS a_size,
+            dva.period_start AS a_period_start, dva.period_end AS a_period_end,
+            dva.spatial_region_name AS a_spatial_region, dva.schema_fingerprint AS a_schema,
             dvb.id AS version_b_id, dvb.original_filename AS b_filename, dvb.uploaded_at AS b_uploaded_at,
-            dvb.dataset_id AS b_dataset_id, db_.title AS b_title, db_.owner_department AS b_department
+            dvb.dataset_id AS b_dataset_id, db_.title AS b_title, db_.owner_department AS b_department, db_.classification AS b_classification,
+            db_.domain AS b_domain, dvb.format AS b_format, dvb.size_bytes AS b_size,
+            dvb.period_start AS b_period_start, dvb.period_end AS b_period_end,
+            dvb.spatial_region_name AS b_spatial_region, dvb.schema_fingerprint AS b_schema
      FROM version_relationships vr
      JOIN dataset_versions dva ON dva.id = vr.version_a_id
      JOIN datasets da ON da.id = dva.dataset_id

@@ -10,7 +10,7 @@ const { textSimilarityScore } = require("./textSimilarity");
  * overlap) before running any expensive comparison. This is the answer to
  * "how does this scale to millions of datasets" in Q&A.
  */
-async function getCandidates({ domain, sizeBytes, periodStart, periodEnd }) {
+async function getCandidates({ domain, sizeBytes, excludeVersionId }) {
   const sizeMin = Math.floor(sizeBytes * 0.5);
   const sizeMax = Math.ceil(sizeBytes * 1.5);
 
@@ -21,9 +21,10 @@ async function getCandidates({ domain, sizeBytes, periodStart, periodEnd }) {
      WHERE d.status = 'active'
        AND dv.size_bytes BETWEEN $1 AND $2
        AND ($3::text IS NULL OR d.domain = $3)
+       AND ($4::text IS NULL OR dv.id != $4)
      ORDER BY dv.uploaded_at DESC
      LIMIT 200`,
-    [sizeMin, sizeMax, domain || null]
+    [sizeMin, sizeMax, domain || null, excludeVersionId || null]
   );
 
   return rows;
@@ -186,20 +187,17 @@ function scoreCandidate(newVersion, candidate, weights = DEFAULT_WEIGHTS) {
       spatial * weights.spatial +
       semantic * weights.semantic;
   } else {
-    const remainingWeight = weights.schema + weights.metadata + weights.temporal + weights.spatial + weights.semantic;
+    // When content signature is unverified, don't inflate schema/metadata to 100%
     total =
-      (schema * weights.schema +
-        metadata * weights.metadata +
-        temporal * weights.temporal +
-        spatial * weights.spatial +
-        semantic * weights.semantic) / (remainingWeight || 1);
+      schema * weights.schema +
+      metadata * weights.metadata +
+      temporal * weights.temporal +
+      spatial * weights.spatial +
+      semantic * weights.semantic;
   }
 
-  if (!isExactByteMatch && total >= 100.0) {
-    total = 99.0;
-  }
-
-  return { totalScore: Math.round(total * 10) / 10, breakdown, isExact: false };
+  const rounded = Math.round(Math.min(99.9, Math.max(0.0, total)) * 10) / 10;
+  return { totalScore: rounded, breakdown, isExact: false };
 }
 
 /**
@@ -227,14 +225,19 @@ function classifyRelationship(newVersion, candidate, totalScore, isExact = false
  * Full pipeline: candidate generation -> scoring -> best match.
  * Returns null if nothing scores above the "related" threshold.
  */
-async function findBestMatch(newVersion) {
+async function findBestMatch(newVersion, excludeVersionId = null) {
+  const currentId = excludeVersionId || newVersion.id || newVersion.datasetVersionId;
   const candidates = await getCandidates({
     domain: newVersion.domain,
     sizeBytes: newVersion.size_bytes,
+    excludeVersionId: currentId,
   });
 
   let best = null;
   for (const candidate of candidates) {
+    if (currentId && candidate.id === currentId) continue;
+    if (candidate.dataset_id && newVersion.dataset_id && candidate.dataset_id === newVersion.dataset_id && candidate.id === currentId) continue;
+
     const { totalScore, breakdown, isExact } = scoreCandidate(newVersion, candidate);
     if (!best || totalScore > best.totalScore) {
       best = {

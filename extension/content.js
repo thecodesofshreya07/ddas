@@ -130,9 +130,19 @@ function showOverlay() {
       ? `${existing.periodStart} to ${existing.periodEnd}`
       : existing.periodStart || existing.periodEnd || "";
     const regionText = existing.spatialRegionName || "";
+    const coordsText = (existing.spatialMinLat !== null && existing.spatialMinLat !== undefined)
+      ? `[${existing.spatialMinLat}°, ${existing.spatialMinLng}° to ${existing.spatialMaxLat}°, ${existing.spatialMaxLng}°]`
+      : "";
     const downloader = existing.downloaderUsername || "User";
     const location = existing.downloadLocation || (existing.ownerDepartment ? `${existing.ownerDepartment} / Central Registry` : "Institute Registry");
     const timestamp = existing.downloadedAt || existing.uploadedAt ? new Date(existing.downloadedAt || existing.uploadedAt).toLocaleString() : "";
+    const domainText = existing.domain || "";
+    const formatText = (existing.format || existingFileName.split(".").pop() || "").toUpperCase();
+    const sizeText = existing.sizeBytes ? `${(existing.sizeBytes / 1024).toFixed(1)} KB` : "";
+    const columnsText = Array.isArray(existing.columns) && existing.columns.length > 0
+      ? `${existing.columns.length} columns: ${existing.columns.slice(0, 4).join(", ")}${existing.columns.length > 4 ? "…" : ""}`
+      : "";
+    const rowCountText = existing.rowCount ? `${Number(existing.rowCount).toLocaleString()} rows` : "";
 
     body.innerHTML = `
       <div class="heading ${isExact ? "danger" : "warning"}">${title}</div>
@@ -152,27 +162,24 @@ function showOverlay() {
         </div>
         <div class="existing-title">${escapeHtml(existingFileName)}</div>
         <div class="existing-meta">
-          <span>${escapeHtml(existing.ownerDepartment || "Registry")}</span> · <span>${escapeHtml(existing.classification || "internal")}</span>
+          <span>${escapeHtml(existing.ownerDepartment || "Registry")}</span> · <span>${escapeHtml(domainText || "General")}</span> · <span>${escapeHtml(existing.classification || "internal")}</span>
+        </div>
+
+        <!-- Comprehensive Dataset Properties Notification -->
+        <div class="existing-attrs">
+          ${periodText ? `<div>📅 <strong>Period:</strong> <span style="color:#0F172A; font-weight:500;">${escapeHtml(periodText)}</span></div>` : ""}
+          ${regionText ? `<div>📍 <strong>Spatial Domain:</strong> <span style="color:#0F172A; font-weight:500;">${escapeHtml(regionText)}</span> ${coordsText ? `<small style="color:#64748B;">${escapeHtml(coordsText)}</small>` : ""}</div>` : ""}
+          ${(columnsText || rowCountText) ? `<div>📊 <strong>Attributes:</strong> <span style="color:#0F172A;">${escapeHtml([rowCountText, columnsText].filter(Boolean).join(" · "))}</span></div>` : ""}
+          ${(formatText || sizeText) ? `<div>📁 <strong>Format & Size:</strong> <span style="color:#0F172A;">${escapeHtml([formatText, sizeText].filter(Boolean).join(" · "))}</span></div>` : ""}
         </div>
 
         ${
           hasAccess
             ? `
             <div style="margin-top:8px; padding:8px 10px; background:#131E33; border:1px solid #1B2A45; border-radius:3px; font-size:11px; color:#94A3B8; display:flex; flex-direction:column; gap:3px;">
-              <div>👤 Original Downloader: <strong style="color:#F5F7FA;">${escapeHtml(downloader)}</strong></div>
-              <div>📂 Download Location: <strong style="color:#38BDF8;">${escapeHtml(location)}</strong></div>
-              ${timestamp ? `<div>🕒 Downloaded At: <span style="font-family:'JetBrains Mono',monospace; color:#E2E8F0;">${escapeHtml(timestamp)}</span></div>` : ""}
-            </div>
-          `
-            : ""
-        }
-
-        ${
-          (periodText || regionText)
-            ? `
-            <div class="existing-attrs">
-              ${periodText ? `<span>📅 Period: <strong>${escapeHtml(periodText)}</strong></span>` : ""}
-              ${regionText ? `<span>📍 Region: <strong>${escapeHtml(regionText)}</strong></span>` : ""}
+              <div>👤 Custodian / Downloader: <strong style="color:#F5F7FA;">${escapeHtml(downloader)}</strong></div>
+              <div>📂 Storage Location: <strong style="color:#38BDF8;">${escapeHtml(location)}</strong></div>
+              ${timestamp ? `<div>🕒 Registered At: <span style="font-family:'JetBrains Mono',monospace; color:#E2E8F0;">${escapeHtml(timestamp)}</span></div>` : ""}
             </div>
           `
             : ""

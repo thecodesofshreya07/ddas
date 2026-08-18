@@ -172,7 +172,8 @@ class LocalDatabase {
         return { rows: rows.slice(0, 5) };
       }
 
-      const rows = this.version_relationships.map((vr) => {
+      const validRelationships = this.version_relationships.filter((vr) => vr.version_a_id !== vr.version_b_id);
+      const rows = validRelationships.map((vr) => {
         const dva = this.dataset_versions.find((dv) => dv.id === vr.version_a_id) || {};
         const dvb = this.dataset_versions.find((dv) => dv.id === vr.version_b_id) || {};
         const da = this.datasets.find((d) => d.id === dva.dataset_id) || {};

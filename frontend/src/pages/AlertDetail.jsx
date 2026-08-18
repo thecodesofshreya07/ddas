@@ -133,6 +133,87 @@ export default function AlertDetail() {
         />
       </Section>
 
+      {/* Comparative Properties: Period, Spatial Domain & Data Attributes */}
+      <Section title="Dataset Properties & Attribute Comparison">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="p-3.5 bg-surface-50 border border-ink-200 rounded-sm">
+            <div className="text-xs font-semibold text-ink-950 uppercase tracking-wide mb-2 pb-1.5 border-b border-ink-200 flex items-center justify-between">
+              <span>Dataset A (Incoming / Detected)</span>
+              <span className="text-[11px] font-normal text-ink-500 font-mono">{(relationship.a_size ? (relationship.a_size / 1024).toFixed(1) + " KB" : "")}</span>
+            </div>
+            <div className="space-y-2 text-xs">
+              <div>
+                <span className="text-ink-500 block font-medium">Title & File:</span>
+                <span className="text-ink-900 font-semibold">{relationship.a_title}</span>
+                <span className="text-ink-500 block font-mono text-[11px]">{relationship.a_filename}</span>
+              </div>
+              <div>
+                <span className="text-ink-500 block font-medium">📅 Time Period:</span>
+                <span className="text-ink-900 font-medium">
+                  {relationship.a_period_start && relationship.a_period_end
+                    ? `${relationship.a_period_start} to ${relationship.a_period_end}`
+                    : relationship.a_period_start || relationship.a_period_end || "Not specified / Continuous"}
+                </span>
+              </div>
+              <div>
+                <span className="text-ink-500 block font-medium">📍 Spatial Domain:</span>
+                <span className="text-ink-900 font-medium">{relationship.a_spatial_region || "Global / Unrestricted"}</span>
+              </div>
+              <div>
+                <span className="text-ink-500 block font-medium">📊 Schema & Attributes:</span>
+                <span className="text-ink-900">
+                  {relationship.a_schema?.columns?.length
+                    ? `${relationship.a_schema.columns.length} columns: ${relationship.a_schema.columns.slice(0, 5).join(", ")}${relationship.a_schema.columns.length > 5 ? "…" : ""}`
+                    : "Standard file stream"}
+                  {relationship.a_schema?.rowCount ? ` (${relationship.a_schema.rowCount.toLocaleString()} rows)` : ""}
+                </span>
+              </div>
+              <div className="pt-1 text-[11px] text-ink-600">
+                Department: <strong>{relationship.a_department}</strong> · Domain: <strong>{relationship.a_domain || "General"}</strong>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-3.5 bg-surface-50 border border-ink-200 rounded-sm">
+            <div className="text-xs font-semibold text-ink-950 uppercase tracking-wide mb-2 pb-1.5 border-b border-ink-200 flex items-center justify-between">
+              <span>Dataset B (Existing in Registry)</span>
+              <span className="text-[11px] font-normal text-ink-500 font-mono">{(relationship.b_size ? (relationship.b_size / 1024).toFixed(1) + " KB" : "")}</span>
+            </div>
+            <div className="space-y-2 text-xs">
+              <div>
+                <span className="text-ink-500 block font-medium">Title & File:</span>
+                <span className="text-ink-900 font-semibold">{relationship.b_title}</span>
+                <span className="text-ink-500 block font-mono text-[11px]">{relationship.b_filename}</span>
+              </div>
+              <div>
+                <span className="text-ink-500 block font-medium">📅 Time Period:</span>
+                <span className="text-ink-900 font-medium">
+                  {relationship.b_period_start && relationship.b_period_end
+                    ? `${relationship.b_period_start} to ${relationship.b_period_end}`
+                    : relationship.b_period_start || relationship.b_period_end || "Not specified / Continuous"}
+                </span>
+              </div>
+              <div>
+                <span className="text-ink-500 block font-medium">📍 Spatial Domain:</span>
+                <span className="text-ink-900 font-medium">{relationship.b_spatial_region || "Global / Unrestricted"}</span>
+              </div>
+              <div>
+                <span className="text-ink-500 block font-medium">📊 Schema & Attributes:</span>
+                <span className="text-ink-900">
+                  {relationship.b_schema?.columns?.length
+                    ? `${relationship.b_schema.columns.length} columns: ${relationship.b_schema.columns.slice(0, 5).join(", ")}${relationship.b_schema.columns.length > 5 ? "…" : ""}`
+                    : "Standard file stream"}
+                  {relationship.b_schema?.rowCount ? ` (${relationship.b_schema.rowCount.toLocaleString()} rows)` : ""}
+                </span>
+              </div>
+              <div className="pt-1 text-[11px] text-ink-600">
+                Department: <strong>{relationship.b_department}</strong> · Domain: <strong>{relationship.b_domain || "General"}</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Section>
+
       {relationship.content_diff && (
         <Section title="What actually changed">
           <DiffView diff={relationship.content_diff} />

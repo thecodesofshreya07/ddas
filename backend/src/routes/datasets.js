@@ -409,6 +409,11 @@ router.post("/check", requireAuth, async (req, res) => {
           datasetVersionId: exactMatch.id,
           title: exactMatch.title || originalStoredName,
           fileName: originalStoredName,
+          domain: exactMatch.domain || "General",
+          format: exactMatch.format || "csv",
+          sizeBytes: exactMatch.size_bytes || null,
+          columns: exactMatch.schema_fingerprint?.columns || [],
+          rowCount: exactMatch.schema_fingerprint?.rowCount || null,
           classification: exactMatch.classification,
           ownerDepartment: exactMatch.owner_department,
           uploadedAt: exactMatch.uploaded_at,
@@ -418,15 +423,23 @@ router.post("/check", requireAuth, async (req, res) => {
           periodStart: exactMatch.period_start || null,
           periodEnd: exactMatch.period_end || null,
           spatialRegionName: exactMatch.spatial_region_name || null,
+          spatialMinLat: exactMatch.spatial_min_lat ?? null,
+          spatialMaxLat: exactMatch.spatial_max_lat ?? null,
+          spatialMinLng: exactMatch.spatial_min_lng ?? null,
+          spatialMaxLng: exactMatch.spatial_max_lng ?? null,
           locationUrl: `http://localhost:5173/datasets/${exactMatch.dataset_id}`,
           hasAccess: true,
         }
-
       : {
           datasetId: null,
           datasetVersionId: null,
           title: "Restricted Dataset (Access Controlled)",
           fileName: originalStoredName,
+          domain: exactMatch.domain || "General",
+          format: exactMatch.format || "csv",
+          sizeBytes: exactMatch.size_bytes || null,
+          columns: [],
+          rowCount: null,
           classification: exactMatch.classification || "restricted",
           ownerDepartment: exactMatch.owner_department ? `${exactMatch.owner_department} Department` : "Restricted Custodian",
           uploadedAt: exactMatch.uploaded_at,
@@ -436,6 +449,10 @@ router.post("/check", requireAuth, async (req, res) => {
           periodStart: exactMatch.period_start || null,
           periodEnd: exactMatch.period_end || null,
           spatialRegionName: exactMatch.spatial_region_name || null,
+          spatialMinLat: null,
+          spatialMaxLat: null,
+          spatialMinLng: null,
+          spatialMaxLng: null,
           locationUrl: null,
           hasAccess: false,
           restrictedNote: "Classification: Restricted — Access restricted to custodian department. Contact data administrator to request access.",
@@ -518,6 +535,11 @@ router.post("/check", requireAuth, async (req, res) => {
           datasetVersionId: candidate.id,
           title: candidate.title || originalStoredName,
           fileName: originalStoredName,
+          domain: candidate.domain || "General",
+          format: candidate.format || "csv",
+          sizeBytes: candidate.size_bytes || null,
+          columns: candidate.schema_fingerprint?.columns || [],
+          rowCount: candidate.schema_fingerprint?.rowCount || null,
           classification: candidate.classification,
           ownerDepartment: candidate.owner_department,
           uploadedAt: candidate.uploaded_at,
@@ -527,15 +549,23 @@ router.post("/check", requireAuth, async (req, res) => {
           periodStart: candidate.period_start || null,
           periodEnd: candidate.period_end || null,
           spatialRegionName: candidate.spatial_region_name || null,
+          spatialMinLat: candidate.spatial_min_lat ?? null,
+          spatialMaxLat: candidate.spatial_max_lat ?? null,
+          spatialMinLng: candidate.spatial_min_lng ?? null,
+          spatialMaxLng: candidate.spatial_max_lng ?? null,
           locationUrl: `http://localhost:5173/datasets/${candidate.dataset_id}`,
           hasAccess: true,
         }
-
       : {
           datasetId: null,
           datasetVersionId: null,
           title: "Restricted Dataset (Access Controlled)",
           fileName: originalStoredName,
+          domain: candidate.domain || "General",
+          format: candidate.format || "csv",
+          sizeBytes: candidate.size_bytes || null,
+          columns: [],
+          rowCount: null,
           classification: candidate.classification || "restricted",
           ownerDepartment: candidate.owner_department ? `${candidate.owner_department} Department` : "Restricted Custodian",
           uploadedAt: candidate.uploaded_at,
@@ -545,6 +575,10 @@ router.post("/check", requireAuth, async (req, res) => {
           periodStart: candidate.period_start || null,
           periodEnd: candidate.period_end || null,
           spatialRegionName: candidate.spatial_region_name || null,
+          spatialMinLat: null,
+          spatialMaxLat: null,
+          spatialMinLng: null,
+          spatialMaxLng: null,
           locationUrl: null,
           hasAccess: false,
           restrictedNote: "Classification: Restricted — Access restricted to custodian department. Contact data administrator to request access.",
@@ -726,8 +760,8 @@ router.post("/register-download", requireAuth, async (req, res) => {
       period_end: periodEnd || null,
       spatial_region_name: spatialRegionName || null,
     };
-    const nearMatch = await findBestMatch(candidateShape);
-    if (nearMatch && nearMatch.totalScore >= 60.0) {
+    const nearMatch = await findBestMatch(candidateShape, versionId);
+    if (nearMatch && nearMatch.candidate.id !== versionId && nearMatch.totalScore >= 60.0) {
       await pool.query(
         `INSERT INTO version_relationships
           (version_a_id, version_b_id, relationship_type, similarity_score, score_breakdown)
