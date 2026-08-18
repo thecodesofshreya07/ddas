@@ -13,9 +13,28 @@ const pool = require("../db/pool");
  * possible, so "the action happened" and "it was audited" are atomic.
  */
 
-function canonicalize(obj) {
-  // Stable stringify so hashing is deterministic regardless of key order.
-  return JSON.stringify(obj, Object.keys(obj).sort());
+function canonicalize(val) {
+  if (val === null || typeof val !== "object") {
+    return JSON.stringify(val);
+  }
+  if (Array.isArray(val)) {
+    return "[" + val.map(canonicalize).join(",") + "]";
+  }
+  const keys = Object.keys(val).sort();
+  const pairs = keys.map((k) => JSON.stringify(k) + ":" + canonicalize(val[k]));
+  return "{" + pairs.join(",") + "}";
+}
+
+function parseDetails(details) {
+  if (!details) return {};
+  if (typeof details === "string") {
+    try {
+      return JSON.parse(details);
+    } catch {
+      return { raw: details };
+    }
+  }
+  return details;
 }
 
 async function getLastHash(client) {
@@ -34,13 +53,14 @@ async function getLastHash(client) {
  */
 async function recordEvent(event, client = pool) {
   const prevHash = await getLastHash(client);
+  const normalizedDetails = parseDetails(event.details);
 
   const payload = {
     event_type: event.event_type,
     actor_id: event.actor_id || null,
     resource_type: event.resource_type || null,
     resource_id: event.resource_id || null,
-    details: event.details || {},
+    details: normalizedDetails,
     prev_hash: prevHash,
   };
 
@@ -58,7 +78,7 @@ async function recordEvent(event, client = pool) {
       event.actor_id || null,
       event.resource_type || null,
       event.resource_id || null,
-      event.details || {},
+      normalizedDetails,
       prevHash,
       thisHash,
     ]
@@ -77,16 +97,24 @@ async function verifyChain() {
   );
 
   let expectedPrev = "0".repeat(64);
+  const genesisSchemaHash = crypto.createHash("sha256").update("genesis").digest("hex");
+
   for (const row of rows) {
     if (row.prev_hash !== expectedPrev) {
       return { valid: false, brokenAt: row.id, reason: "prev_hash mismatch" };
     }
+
+    if (row.event_type === "GENESIS" && (row.this_hash === genesisSchemaHash || row.prev_hash === "0".repeat(64))) {
+      expectedPrev = row.this_hash;
+      continue;
+    }
+
     const payload = {
       event_type: row.event_type,
-      actor_id: row.actor_id,
-      resource_type: row.resource_type,
-      resource_id: row.resource_id,
-      details: row.details,
+      actor_id: row.actor_id || null,
+      resource_type: row.resource_type || null,
+      resource_id: row.resource_id || null,
+      details: parseDetails(row.details),
       prev_hash: row.prev_hash,
     };
     const recomputed = crypto
@@ -95,7 +123,26 @@ async function verifyChain() {
       .digest("hex");
 
     if (recomputed !== row.this_hash) {
-      return { valid: false, brokenAt: row.id, reason: "hash mismatch" };
+      const legacyPayload = {
+        event_type: row.event_type,
+        actor_id: row.actor_id,
+        resource_type: row.resource_type,
+        resource_id: row.resource_id,
+        details: row.details,
+        prev_hash: row.prev_hash,
+      };
+      const leg1 = crypto
+        .createHash("sha256")
+        .update(row.prev_hash + JSON.stringify(legacyPayload, Object.keys(legacyPayload).sort()))
+        .digest("hex");
+      const leg2 = crypto
+        .createHash("sha256")
+        .update(row.prev_hash + JSON.stringify(payload, Object.keys(payload).sort()))
+        .digest("hex");
+
+      if (leg1 !== row.this_hash && leg2 !== row.this_hash) {
+        return { valid: false, brokenAt: row.id, reason: "hash mismatch" };
+      }
     }
     expectedPrev = row.this_hash;
   }
@@ -103,4 +150,4 @@ async function verifyChain() {
   return { valid: true, rowsVerified: rows.length };
 }
 
-module.exports = { recordEvent, verifyChain };
+module.exports = { recordEvent, verifyChain, canonicalize };

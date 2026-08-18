@@ -1,6 +1,30 @@
 const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 
+function canonicalize(val) {
+  if (val === null || typeof val !== "object") {
+    return JSON.stringify(val);
+  }
+  if (Array.isArray(val)) {
+    return "[" + val.map(canonicalize).join(",") + "]";
+  }
+  const keys = Object.keys(val).sort();
+  const pairs = keys.map((k) => JSON.stringify(k) + ":" + canonicalize(val[k]));
+  return "{" + pairs.join(",") + "}";
+}
+
+function parseDetails(details) {
+  if (!details) return {};
+  if (typeof details === "string") {
+    try {
+      return JSON.parse(details);
+    } catch {
+      return { raw: details };
+    }
+  }
+  return details;
+}
+
 class LocalDatabase {
   constructor() {
     this.users = [];
@@ -230,7 +254,7 @@ class LocalDatabase {
     };
     const genesisHash = crypto
       .createHash("sha256")
-      .update(genesisPrev + JSON.stringify(genesisPayload, Object.keys(genesisPayload).sort()))
+      .update(genesisPrev + canonicalize(genesisPayload))
       .digest("hex");
 
     this.audit_log.push({
@@ -435,15 +459,26 @@ class LocalDatabase {
     // 5. Audit log
     if (upper.startsWith("INSERT INTO AUDIT_LOG")) {
       const [event_type, actor_id, resource_type, resource_id, details, prev_hash, this_hash] = params;
+      const prev = prev_hash || (this.audit_log.length > 0 ? this.audit_log[this.audit_log.length - 1].this_hash : "0".repeat(64));
+      const normalizedDetails = parseDetails(details);
+      const payload = {
+        event_type,
+        actor_id: actor_id || null,
+        resource_type: resource_type || null,
+        resource_id: resource_id || null,
+        details: normalizedDetails,
+        prev_hash: prev,
+      };
+      const hash = this_hash || crypto.createHash("sha256").update(prev + canonicalize(payload)).digest("hex");
       const newLog = {
         id: this.audit_log.length + 1,
         event_type,
-        actor_id,
-        resource_type,
-        resource_id,
-        details,
-        prev_hash: prev_hash || "0".repeat(64),
-        this_hash: this_hash || crypto.createHash("sha256").update(JSON.stringify(details || {})).digest("hex"),
+        actor_id: actor_id || null,
+        resource_type: resource_type || null,
+        resource_id: resource_id || null,
+        details: normalizedDetails,
+        prev_hash: prev,
+        this_hash: hash,
         created_at: new Date().toISOString(),
       };
       this.audit_log.push(newLog);
